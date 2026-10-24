@@ -81,7 +81,7 @@ function Review() {
   }
 
   async function onPost(scheduled: boolean) {
-    if (scheduled && !when) return toast.error("Pick a date and time");
+    if (scheduled && !when) { toast.error("Pick a date and time"); return; }
     setBusy(true);
     try {
       await post({ data: { reviewId: id, caption: cap, scheduledAt: scheduled ? new Date(when).toISOString() : null } });

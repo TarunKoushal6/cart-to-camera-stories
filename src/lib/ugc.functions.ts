@@ -78,7 +78,7 @@ export const startVideo = createServerFn({ method: "POST" })
     if (r.status === "rendering") return { status: r.status };
     const { createClip } = await import("./video.server");
     const [vo1] = r.voiceover.split("\n---\n");
-    const job = await createClip(r.scene_1, vo1);
+    const job = await createClip(r.scene_1, vo1 ?? "");
     await context.supabase.from("reviews").update({ status: "rendering", stage: 1, job_id: job.id, error: null }).eq("id", r.id);
     return { status: "rendering" };
   });
