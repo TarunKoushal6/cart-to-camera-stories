@@ -15,6 +15,8 @@ export const Route = createFileRoute("/_authenticated/schedule")({
       { name: "description", content: "Scheduled and published Instagram reels." },
       { property: "og:title", content: "Posts — POVreel" },
       { property: "og:description", content: "Scheduled and published Instagram reels." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Schedule,

@@ -1,11 +1,12 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { addProduct, generateScript } from "@/lib/ugc.functions";
+import { addProduct } from "@/lib/ugc.functions";
+import { ReviewCreator } from "@/components/review-creator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
       { name: "description", content: "Add Amazon and Flipkart products and generate POV review scripts." },
       { property: "og:title", content: "Products — POVreel" },
       { property: "og:description", content: "Add Amazon and Flipkart products and generate POV review scripts." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Dashboard,
@@ -24,12 +27,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const add = useServerFn(addProduct);
-  const gen = useServerFn(generateScript);
   const [url, setUrl] = useState("");
   const [adding, setAdding] = useState(false);
-  const [genId, setGenId] = useState<string | null>(null);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
@@ -55,18 +55,6 @@ function Dashboard() {
       toast.error(err instanceof Error ? err.message : "Couldn't add product");
     } finally {
       setAdding(false);
-    }
-  }
-
-  async function onGen(productId: string) {
-    setGenId(productId);
-    try {
-      const r = await gen({ data: { productId } });
-      navigate({ to: "/reviews/$id", params: { id: r.id } });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't write the script");
-    } finally {
-      setGenId(null);
     }
   }
 
@@ -106,10 +94,7 @@ function Dashboard() {
               </div>
               <h3 className="mt-1 font-medium line-clamp-2">{p.title}</h3>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => onGen(p.id)} disabled={genId === p.id}>
-                  {genId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {genId === p.id ? "Writing…" : "New script"}
-                </Button>
+                 <ReviewCreator productId={p.id} />
                 {p.reviews.map((r, i) => (
                   <Link key={r.id} to="/reviews/$id" params={{ id: r.id }}>
                     <Badge variant="outline">Review {i + 1} · {r.status}</Badge>
