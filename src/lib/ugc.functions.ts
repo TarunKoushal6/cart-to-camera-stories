@@ -146,6 +146,44 @@ export const connectInstagram = createServerFn({ method: "POST" })
     return info;
   });
 
+export const saveReview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({
+    reviewId: z.string().uuid(), voiceover1: z.string().max(5000), voiceover2: z.string().max(5000),
+    scene1: z.string().max(5000), scene2: z.string().max(5000),
+    caption: z.string().max(2200), hashtags: z.string().max(2200),
+  }).refine((d) => `${d.caption}\n\n${d.hashtags}`.trim().length <= 2200, "Caption and hashtags must fit within 2,200 characters.").parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: r, error } = await context.supabase.from("reviews").select("status, script_mode").eq("id", data.reviewId).single();
+    if (error || !r) throw new Error("Review not found");
+    if (r.status === "rendering") throw new Error("Wait for video generation to finish before editing.");
+    const silent = r.script_mode === "actions" || r.script_mode === "upload";
+    const { error: updateError } = await context.supabase.from("reviews").update({
+      voiceover: silent ? "\n---\n" : `${data.voiceover1}\n---\n${data.voiceover2}`,
+      scene_1: data.scene1, scene_2: data.scene2, caption: data.caption, hashtags: data.hashtags,
+    }).eq("id", data.reviewId).neq("status", "rendering");
+    if (updateError) throw new Error(updateError.message);
+    return { saved: true };
+  });
+
+export const finishVideoUpload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ reviewId: z.string().uuid(), path: z.string().max(300) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: r, error } = await context.supabase.from("reviews").select("id, status").eq("id", data.reviewId).single();
+    if (error || !r) throw new Error("Review not found");
+    if (r.status === "rendering") throw new Error("Wait for video generation to finish before uploading.");
+    const prefix = `${context.userId}/${r.id}/`;
+    if (!data.path.startsWith(prefix) || !/^[a-f0-9-]+\.mp4$/.test(data.path.slice(prefix.length))) throw new Error("Invalid video upload path");
+    const filename = data.path.slice(prefix.length);
+    const { data: files, error: listError } = await context.supabase.storage.from("videos").list(prefix.slice(0, -1), { search: filename });
+    const file = files?.find((f) => f.name === filename);
+    if (listError || !file || file.metadata?.mimetype !== "video/mp4" || !file.metadata?.size || file.metadata.size > MAX_VIDEO_BYTES) throw new Error("Upload a valid MP4 video up to 50 MB first.");
+    const { error: updateError } = await context.supabase.from("reviews").update({ status: "ready", video_path: data.path, job_id: null, error: null, stage: 2 }).eq("id", r.id).neq("status", "rendering");
+    if (updateError) throw new Error(updateError.message);
+    return { status: "ready" };
+  });
+
 export const schedulePost = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
