@@ -13,3 +13,5 @@
 - Reels are ~20s: one 10s video job plus one 10s extension job, advanced by client polling of `pollVideo` — avoids long server requests.
 - Instagram posting moves posts scheduled → processing → published via `advancePost`, driven by the 5-minute `/api/public/jobs/publish-due` schedule and on-demand refreshes — Instagram processes videos asynchronously.
 - The app uses a single dark theme defined in `:root` — no light/dark toggle.
+- Review creation uses persisted script modes and language; custom text bypasses AI, and actions mode suppresses narration in both video stages — preserves creator intent.
+- External MP4s upload directly to private owner-scoped Storage paths and attach through an authenticated verification function — avoids large server requests and cross-user attachment.
