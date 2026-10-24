@@ -14,7 +14,178 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      instagram_accounts: {
+        Row: {
+          access_token: string
+          connected_at: string
+          ig_user_id: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          ig_user_id: string
+          user_id: string
+          username?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          ig_user_id?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      posts: {
+        Row: {
+          caption: string
+          created_at: string
+          error: string | null
+          id: string
+          ig_container_id: string | null
+          ig_media_id: string | null
+          review_id: string
+          scheduled_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          ig_container_id?: string | null
+          ig_media_id?: string | null
+          review_id: string
+          scheduled_at?: string
+          status?: string
+          user_id?: string
+        }
+        Update: {
+          caption?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          ig_container_id?: string | null
+          ig_media_id?: string | null
+          review_id?: string
+          scheduled_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          created_at: string
+          features: string
+          id: string
+          image_url: string | null
+          price: string | null
+          research: string
+          source: string
+          title: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          features?: string
+          id?: string
+          image_url?: string | null
+          price?: string | null
+          research?: string
+          source?: string
+          title?: string
+          url: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          features?: string
+          id?: string
+          image_url?: string | null
+          price?: string | null
+          research?: string
+          source?: string
+          title?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reviews: {
+        Row: {
+          caption: string
+          created_at: string
+          error: string | null
+          hashtags: string
+          hook: string
+          id: string
+          job_id: string | null
+          product_id: string
+          scene_1: string
+          scene_2: string
+          stage: number
+          status: string
+          user_id: string
+          video_path: string | null
+          voiceover: string
+        }
+        Insert: {
+          caption?: string
+          created_at?: string
+          error?: string | null
+          hashtags?: string
+          hook?: string
+          id?: string
+          job_id?: string | null
+          product_id: string
+          scene_1?: string
+          scene_2?: string
+          stage?: number
+          status?: string
+          user_id?: string
+          video_path?: string | null
+          voiceover?: string
+        }
+        Update: {
+          caption?: string
+          created_at?: string
+          error?: string | null
+          hashtags?: string
+          hook?: string
+          id?: string
+          job_id?: string | null
+          product_id?: string
+          scene_1?: string
+          scene_2?: string
+          stage?: number
+          status?: string
+          user_id?: string
+          video_path?: string | null
+          voiceover?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
