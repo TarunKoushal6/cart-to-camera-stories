@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, Output, NoObjectGeneratedError } from "ai";
+import { streamText, Output, NoObjectGeneratedError, type LanguageModel } from "ai";
 import type { z } from "zod";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
@@ -27,7 +27,8 @@ export async function generateStructured<T>(schema: z.ZodType<T>, instructions: 
     fetch: runIdFetch(),
   });
   const result = streamText({
-    model: provider.responses("openai/gpt-6-astra"),
+    // Cast: duplicate nested @ai-sdk/provider type copies; runtime-compatible.
+    model: provider.responses("openai/gpt-6-astra") as unknown as LanguageModel,
     system: instructions,
     messages: [{ role: "user", content: prompt }],
     output: Output.object({ schema }),
