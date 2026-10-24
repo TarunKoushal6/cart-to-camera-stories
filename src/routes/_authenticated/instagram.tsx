@@ -16,6 +16,8 @@ export const Route = createFileRoute("/_authenticated/instagram")({
       { name: "description", content: "Connect your Instagram professional account to post reels." },
       { property: "og:title", content: "Instagram — POVreel" },
       { property: "og:description", content: "Connect your Instagram professional account to post reels." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: IG,
