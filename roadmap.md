@@ -1,0 +1,3 @@
+- [ ] Add AI language selection, custom scripts and actions-only review creation.
+- [ ] Add external video uploads and editable posting details.
+- [ ] Verify rules, authenticated creation/upload flow and page rendering.

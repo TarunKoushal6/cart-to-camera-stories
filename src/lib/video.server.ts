@@ -1,3 +1,5 @@
+import { videoAudioInstruction } from "./ugc-rules";
+
 const BASE = "https://ai.gateway.lovable.dev/v1/videos";
 const MODEL = "google/gemini-omni-1.1-flash";
 
@@ -23,21 +25,21 @@ async function asJob(res: Response): Promise<Job> {
 const STYLE =
   "Vertical 9:16 first-person POV smartphone footage for an Instagram Reel product review. Only the creator's hands and the product are visible — never show a face or a person's head. Natural lighting, realistic home setting, micro-detail on the product. Single continuous shot.";
 
-export async function createClip(scene: string, voiceover: string) {
+export async function createClip(scene: string, voiceover: string, silent = false) {
   return asJob(
     await fetch(BASE, {
       method: "POST",
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
-        input: `${STYLE}\n\nScene: ${scene}\n\nAudio: a friendly, casual off-camera narrator voice says: "${voiceover}". Light upbeat background music. No on-screen faces.`,
+        input: `${STYLE}\n\nScene: ${scene}\n\n${videoAudioInstruction(voiceover, silent)}`,
         response_format: { type: "video", resolution: "720p", duration: "10s", aspect_ratio: "9:16" },
       }),
     }),
   );
 }
 
-export async function extendClip(mp4: Uint8Array, scene: string, voiceover: string) {
+export async function extendClip(mp4: Uint8Array, scene: string, voiceover: string, silent = false) {
   return asJob(
     await fetch(BASE, {
       method: "POST",
@@ -48,7 +50,7 @@ export async function extendClip(mp4: Uint8Array, scene: string, voiceover: stri
           { type: "video", data: toBase64(mp4), mime_type: "video/mp4" },
           {
             type: "text",
-            text: `The scene continues in the same first-person POV, hands only, no faces. ${scene}\nThe same narrator voice continues: "${voiceover}". The music continues and wraps up.`,
+            text: `The scene continues in the same first-person POV, hands only, no faces. ${scene}\n${videoAudioInstruction(voiceover, silent)}`,
           },
         ],
         response_format: { type: "video", resolution: "720p", duration: "10s" },

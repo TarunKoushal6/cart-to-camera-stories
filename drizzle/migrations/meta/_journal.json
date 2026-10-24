@@ -8,6 +8,13 @@
       "when": 1792827749190,
       "tag": "0000_ugc_core",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792841496375,
+      "tag": "0001_review_script_modes_and_video_uploads",
+      "breakpoints": true
     }
   ]
 }
