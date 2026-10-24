@@ -133,9 +133,11 @@ export type Database = {
           hook: string
           id: string
           job_id: string | null
+          language: string
           product_id: string
           scene_1: string
           scene_2: string
+          script_mode: string
           stage: number
           status: string
           user_id: string
@@ -150,9 +152,11 @@ export type Database = {
           hook?: string
           id?: string
           job_id?: string | null
+          language?: string
           product_id: string
           scene_1?: string
           scene_2?: string
+          script_mode?: string
           stage?: number
           status?: string
           user_id?: string
@@ -167,9 +171,11 @@ export type Database = {
           hook?: string
           id?: string
           job_id?: string | null
+          language?: string
           product_id?: string
           scene_1?: string
           scene_2?: string
+          script_mode?: string
           stage?: number
           status?: string
           user_id?: string

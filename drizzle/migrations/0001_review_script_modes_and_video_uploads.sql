@@ -1,0 +1,4 @@
+ALTER TABLE public.reviews ADD COLUMN script_mode text NOT NULL DEFAULT 'ai' CHECK (script_mode IN ('ai', 'custom', 'actions', 'upload'));
+ALTER TABLE public.reviews ADD COLUMN language text NOT NULL DEFAULT 'english' CHECK (language IN ('english', 'hindi_hinglish'));
+CREATE POLICY "own video uploads" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'videos' AND (storage.foldername(name))[1] = auth.uid()::text);
+CREATE POLICY "own video cleanup" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'videos' AND (storage.foldername(name))[1] = auth.uid()::text);
