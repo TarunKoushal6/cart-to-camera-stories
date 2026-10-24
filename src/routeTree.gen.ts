@@ -10,12 +10,41 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedInstagramRouteImport } from './routes/_authenticated/instagram'
+import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
+import { Route as AuthenticatedReviewsIdRouteImport } from './routes/_authenticated/reviews.$id'
 import { Route as ApiPublicJobsPublishDueRouteImport } from './routes/api/public/jobs/publish-due'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedInstagramRoute = AuthenticatedInstagramRouteImport.update({
+  id: '/instagram',
+  path: '/instagram',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
+  id: '/schedule',
+  path: '/schedule',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedReviewsIdRoute = AuthenticatedReviewsIdRouteImport.update({
+  id: '/reviews/$id',
+  path: '/reviews/$id',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const ApiPublicJobsPublishDueRoute = ApiPublicJobsPublishDueRouteImport.update({
   id: '/api/public/jobs/publish-due',
@@ -25,27 +54,61 @@ const ApiPublicJobsPublishDueRoute = ApiPublicJobsPublishDueRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/instagram': typeof AuthenticatedInstagramRoute
+  '/schedule': typeof AuthenticatedScheduleRoute
+  '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/instagram': typeof AuthenticatedInstagramRoute
+  '/schedule': typeof AuthenticatedScheduleRoute
+  '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/instagram': typeof AuthenticatedInstagramRoute
+  '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
+  '/_authenticated/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/jobs/publish-due'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/instagram'
+    | '/schedule'
+    | '/reviews/$id'
+    | '/api/public/jobs/publish-due'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/jobs/publish-due'
-  id: '__root__' | '/' | '/api/public/jobs/publish-due'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/instagram'
+    | '/schedule'
+    | '/reviews/$id'
+    | '/api/public/jobs/publish-due'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/instagram'
+    | '/_authenticated/schedule'
+    | '/_authenticated/reviews/$id'
+    | '/api/public/jobs/publish-due'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ApiPublicJobsPublishDueRoute: typeof ApiPublicJobsPublishDueRoute
 }
 
@@ -58,6 +121,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/instagram': {
+      id: '/_authenticated/instagram'
+      path: '/instagram'
+      fullPath: '/instagram'
+      preLoaderRoute: typeof AuthenticatedInstagramRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/schedule': {
+      id: '/_authenticated/schedule'
+      path: '/schedule'
+      fullPath: '/schedule'
+      preLoaderRoute: typeof AuthenticatedScheduleRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/reviews/$id': {
+      id: '/_authenticated/reviews/$id'
+      path: '/reviews/$id'
+      fullPath: '/reviews/$id'
+      preLoaderRoute: typeof AuthenticatedReviewsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/api/public/jobs/publish-due': {
       id: '/api/public/jobs/publish-due'
       path: '/api/public/jobs/publish-due'
@@ -68,8 +166,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedRouteChildren {
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedInstagramRoute: typeof AuthenticatedInstagramRoute
+  AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
+  AuthenticatedReviewsIdRoute: typeof AuthenticatedReviewsIdRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedInstagramRoute: AuthenticatedInstagramRoute,
+  AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
+  AuthenticatedReviewsIdRoute: AuthenticatedReviewsIdRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ApiPublicJobsPublishDueRoute: ApiPublicJobsPublishDueRoute,
 }
 export const routeTree = rootRouteImport
