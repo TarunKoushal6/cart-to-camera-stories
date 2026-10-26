@@ -23,7 +23,7 @@ function Settings(){
     try{
       const r=await scan({data:{provider,key,baseUrl:provider==="custom"?baseUrl:null}});
       setModels(r.models);
-      if(r.models.length&&!r.models.includes(model))setModel(r.models[0]);
+      if(r.models.length&&!r.models.includes(model))setModel(r.models[0]!);
       toast.success(`${r.models.length} models found`);
     }catch(e){setModels([]);toast.error(e instanceof Error?e.message:"Couldn't list models");}
     finally{setScanning(false);}

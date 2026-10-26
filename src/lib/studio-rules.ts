@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const providers = ["openai", "gemini", "openrouter", "anthropic", "custom"] as const;
 export type Provider = typeof providers[number];
-export const endpointSchema = z.url({ protocol: /^https?$/ }).max(500);
+export const endpointSchema = z.string().url().max(500).regex(/^https?:\/\//, "Use an http(s) URL.");
 /** Chat-completions base URL for a provider; custom endpoints must supply their own. */
 export function providerBaseUrl(provider: Provider, baseUrl?: string | null) {
   if (provider === "openai") return "https://api.openai.com/v1";
