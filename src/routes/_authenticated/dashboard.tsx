@@ -1,110 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
+import { Youtube, ArrowRight, Film, Scissors, Loader2, KeyRound } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { addProduct } from "@/lib/ugc.functions";
-import { ReviewCreator } from "@/components/review-creator";
+import { importYouTube } from "@/lib/studio.functions";
+import { studioHead } from "@/lib/studio-rules";
+import { StudioSource } from "@/components/studio-source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-
-export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({
-    meta: [
-      { title: "Products — POVreel" },
-      { name: "description", content: "Add Amazon and Flipkart products and generate POV review scripts." },
-      { property: "og:title", content: "Products — POVreel" },
-      { property: "og:description", content: "Add Amazon and Flipkart products and generate POV review scripts." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: Dashboard,
-});
-
-function Dashboard() {
-  const qc = useQueryClient();
-  const add = useServerFn(addProduct);
-  const [url, setUrl] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  const { data: products = [] } = useQuery({
-    queryKey: ["products"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*, reviews(id, status, hook, created_at)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  async function onAdd(e: React.FormEvent) {
-    e.preventDefault();
-    setAdding(true);
-    try {
-      await add({ data: { url } });
-      setUrl("");
-      toast.success("Product added and researched");
-      qc.invalidateQueries({ queryKey: ["products"] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't add product");
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function onDelete(id: string) {
-    await supabase.from("products").delete().eq("id", id);
-    qc.invalidateQueries({ queryKey: ["products"] });
-  }
-
-  return (
-    <div>
-      <h1 className="font-display text-4xl font-bold">Products</h1>
-      <p className="text-muted-foreground mt-1">Paste an Amazon or Flipkart link. We read the listing and research how people actually use it.</p>
-
-      <form onSubmit={onAdd} className="mt-6 flex gap-2">
-        <Input placeholder="https://www.amazon.in/dp/…  or  https://www.flipkart.com/…" value={url} onChange={(e) => setUrl(e.target.value)} required type="url" />
-        <Button disabled={adding} className="shrink-0">
-          {adding ? <><Loader2 className="h-4 w-4 animate-spin" /> Researching…</> : "Add product"}
-        </Button>
-      </form>
-
-      <div className="mt-8 grid gap-4 md:grid-cols-2">
-        {products.length === 0 && <p className="text-muted-foreground">No products yet.</p>}
-        {products.map((p) => (
-          <article key={p.id} className="rounded-xl border border-border bg-card p-4 flex gap-4">
-            {p.image_url ? (
-              <img src={p.image_url} alt={p.title} className="h-24 w-24 rounded-md object-contain bg-secondary shrink-0" />
-            ) : (
-              <div className="h-24 w-24 rounded-md bg-secondary shrink-0" />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="capitalize">{p.source}</Badge>
-                {p.price && <span className="text-sm text-primary">{p.price}</span>}
-                <button onClick={() => onDelete(p.id)} className="ml-auto text-muted-foreground hover:text-destructive" aria-label="Delete product">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <h3 className="mt-1 font-medium line-clamp-2">{p.title}</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                 <ReviewCreator productId={p.id} />
-                {p.reviews.map((r, i) => (
-                  <Link key={r.id} to="/reviews/$id" params={{ id: r.id }}>
-                    <Badge variant="outline">Review {i + 1} · {r.status}</Badge>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
+export const Route=createFileRoute("/_authenticated/dashboard")({head:()=>studioHead("Studio","Repurpose YouTube videos into captioned vertical shorts."),component:Dashboard});
+function Dashboard(){
+ const qc=useQueryClient(),add=useServerFn(importYouTube);
+ const [url,setUrl]=useState(""),[busy,setBusy]=useState(false);
+ const {data:sources=[],error}=useQuery({queryKey:["studio-sources"],queryFn:async()=>{const r=await supabase.from("studio_sources").select("*").order("created_at",{ascending:false});if(r.error)throw r.error;return r.data;}});
+ const {data:clips=[]}=useQuery({queryKey:["studio-clip-count"],queryFn:async()=>{const r=await supabase.from("studio_clips").select("id,video_path");if(r.error)throw r.error;return r.data;}});
+ return <div><header className="flex flex-wrap justify-between items-start gap-4"><div><p className="studio-eyebrow">REPURPOSING STUDIO</p><h1 className="font-display text-4xl font-bold mt-2">Long videos. <span className="text-primary">Short stories.</span></h1></div><Link to="/settings"><Button variant="outline" size="sm"><KeyRound className="h-4 w-4"/>Your AI key</Button></Link></header>
+ <section className="mt-9 py-7 border-y border-border"><h2 className="font-medium flex gap-2 items-center"><Youtube className="h-5 w-5 text-accent"/>Import a YouTube video</h2><form className="flex flex-col sm:flex-row gap-3 mt-4" onSubmit={async e=>{e.preventDefault();setBusy(true);try{const r=await add({data:{url}});setUrl("");qc.invalidateQueries({queryKey:["studio-sources"]});toast.success(r.transcript_status==="available"?"Video and captions imported":"Video imported. Automatic captions unavailable; import SRT or VTT captions.");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't import video");}finally{setBusy(false);}}}><Input aria-label="YouTube URL" placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={e=>setUrl(e.target.value)} type="url" required className="h-12 bg-card"/><Button disabled={busy} className="h-12 shrink-0">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<ArrowRight className="h-4 w-4"/>}{busy?"Importing…":"Import video"}</Button></form><p className="text-xs text-muted-foreground mt-3">Free metadata & available captions · Only use videos you own or have permission to repurpose</p></section>
+ <div className="grid grid-cols-3 gap-4 py-7 border-b border-border">{[{label:"Source videos",value:sources.length,Icon:Film},{label:"Selected moments",value:clips.length,Icon:Scissors},{label:"Exported shorts",value:clips.filter(c=>c.video_path).length,Icon:ArrowRight}].map(s=><div key={s.label}><div className="flex gap-2 items-center text-xs text-muted-foreground"><s.Icon className="h-4 w-4"/>{s.label}</div><p className="font-display text-3xl font-bold mt-2">{s.value.toString().padStart(2,"0")}</p></div>)}</div>
+ <div className="flex justify-between items-center mt-8"><h2 className="font-display text-xl font-bold">Your source library</h2><span className="text-xs text-muted-foreground">{sources.length} videos</span></div>{error&&<p className="text-destructive mt-4">Couldn't load your library. Please refresh.</p>}{!sources.length&&!error&&<div className="py-16 text-center border-b border-border"><Film className="h-10 w-10 text-muted-foreground mx-auto"/><h3 className="font-display text-xl mt-4">Your next short starts here</h3><p className="text-sm text-muted-foreground mt-2">No source videos imported yet.</p></div>}{sources.map(s=><StudioSource key={s.id} source={s}/>)}</div>;
 }

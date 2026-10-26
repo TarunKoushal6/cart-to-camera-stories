@@ -1,0 +1,32 @@
+import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Sparkles, Plus, Upload, ArrowUpRight, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+import { analyzeSource, addManualClip, saveTranscript } from "@/lib/studio.functions";
+import { parseTranscript, stamp, type Cue } from "@/lib/studio-rules";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+type Source=Database["public"]["Tables"]["studio_sources"]["Row"];
+export function StudioSource({source}:{source:Source}) {
+  const qc=useQueryClient();
+  const analyze=useServerFn(analyzeSource),manual=useServerFn(addManualClip),save=useServerFn(saveTranscript);
+  const [busy,setBusy]=useState(false),[expanded,setExpanded]=useState(false),[text,setText]=useState("");
+  const [start,setStart]=useState(0),[length,setLength]=useState(25),[title,setTitle]=useState("");
+  const cues=source.transcript as Cue[];
+  const {data:clips=[]}=useQuery({queryKey:["studio-clips",source.id],queryFn:async()=>{ const r=await supabase.from("studio_clips").select("*").eq("source_id",source.id).order("score",{ascending:false}); if(r.error) throw r.error; return r.data; }});
+  async function run(fn:()=>Promise<unknown>){setBusy(true);try{await fn();await qc.invalidateQueries({queryKey:["studio-clips",source.id]});await qc.invalidateQueries({queryKey:["studio-sources"]});}catch(e){toast.error(e instanceof Error?e.message:"Couldn't complete this action");}finally{setBusy(false);}}
+  return <article className="border-b border-border py-6">
+    <div className="flex flex-col sm:flex-row gap-5">
+      <img src={source.thumbnail_url || ""} alt={source.title} className="w-full sm:w-52 aspect-video object-cover rounded-md bg-secondary" />
+      <div className="min-w-0 flex-1"><div className="flex gap-2 text-xs text-muted-foreground"><span>{source.author}</span><span>·</span><span>{source.duration?stamp(source.duration):"YouTube"}</span></div><h2 className="font-display text-xl font-bold mt-2">{source.title}</h2><div className="flex flex-wrap items-center gap-2 mt-3"><Badge variant={cues.length?"secondary":"outline"}>{cues.length?`${cues.length} caption cues`:"Captions unavailable"}</Badge><Badge variant="outline">{clips.length} clips</Badge></div><div className="flex flex-wrap gap-2 mt-4"><Button size="sm" disabled={busy || !cues.length} onClick={()=>run(async()=>{const r=await analyze({data:{sourceId:source.id}});toast.success(`${r.count} moments selected`);})}>{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Sparkles className="h-4 w-4"/>}Find moments</Button><Button size="sm" variant="outline" onClick={()=>setExpanded(!expanded)}><Plus className="h-4 w-4"/>Manual / transcript</Button><a href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground">YouTube<ArrowUpRight className="h-3 w-3"/></a></div></div>
+    </div>
+    {expanded && <div className="mt-5 grid md:grid-cols-2 gap-6 border-t border-border pt-5"><form onSubmit={e=>{e.preventDefault();run(async()=>{await manual({data:{sourceId:source.id,segment:{title:title||"Untitled moment",start,end:start+length,score:0,reason:"Manual selection"}}});toast.success("Moment added");});}} className="space-y-3"><h3 className="font-medium">Select a moment</h3><Input aria-label="Clip title" placeholder="Clip title" value={title} onChange={e=>setTitle(e.target.value)} required/><div className="grid grid-cols-2 gap-3"><label className="text-xs text-muted-foreground">Start (seconds)<Input type="number" min="0" step="0.1" value={start} onChange={e=>setStart(Number(e.target.value))}/></label><label className="text-xs text-muted-foreground">Length (20–30s)<Input type="number" min="20" max="30" step="0.1" value={length} onChange={e=>setLength(Number(e.target.value))}/></label></div><Button variant="outline" disabled={busy}><Plus className="h-4 w-4"/>Add moment</Button></form><form onSubmit={e=>{e.preventDefault();run(async()=>{const parsed=parseTranscript(text);if(!parsed.length)throw new Error("Paste timed SRT or VTT captions.");await save({data:{sourceId:source.id,cues:parsed}});setText("");toast.success("Transcript saved");});}} className="space-y-3"><h3 className="font-medium">Timed transcript</h3><Textarea aria-label="Timed transcript" placeholder={"00:00:00.000 --> 00:00:05.000\nYour caption text"} value={text} onChange={e=>setText(e.target.value)} rows={4}/><div className="flex gap-3 items-center"><Button variant="outline" disabled={busy || !text}><Upload className="h-4 w-4"/>Save captions</Button><label className="text-xs text-muted-foreground">SRT / VTT<input aria-label="Import captions file" className="block w-full mt-1" type="file" accept=".srt,.vtt" onChange={async e=>{const f=e.target.files?.[0];if(f)setText(await f.text());}}/></label></div></form></div>}
+    {!!clips.length && <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-5">{clips.map(c=><Link to="/clips/$id" params={{id:c.id}} key={c.id} className="group border border-border rounded-md p-4 hover:border-primary/60 transition-colors bg-card"><div className="flex justify-between text-xs text-muted-foreground"><span>{stamp(c.start_seconds)} — {stamp(c.end_seconds)} · {Math.round(c.end_seconds-c.start_seconds)}s</span><span className="text-primary">{c.score?`${c.score}/100`:"Manual"}</span></div><h3 className="font-medium mt-2 flex gap-2 justify-between">{c.title}<ArrowUpRight className="shrink-0 h-4 w-4 group-hover:text-primary"/></h3><p className="text-xs text-muted-foreground line-clamp-2 mt-2">{c.reason}</p><span className="text-xs mt-3 block">{c.video_path?"Exported":"Ready to edit"}</span></Link>)}</div>}
+  </article>;
+}
