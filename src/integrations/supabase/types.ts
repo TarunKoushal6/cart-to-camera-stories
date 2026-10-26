@@ -194,6 +194,7 @@ export type Database = {
       }
       studio_clips: {
         Row: {
+          approved_at: string | null
           caption: string
           created_at: string
           end_seconds: number
@@ -205,8 +206,10 @@ export type Database = {
           title: string
           user_id: string
           video_path: string | null
+          voiceover: string | null
         }
         Insert: {
+          approved_at?: string | null
           caption?: string
           created_at?: string
           end_seconds: number
@@ -218,8 +221,10 @@ export type Database = {
           title: string
           user_id: string
           video_path?: string | null
+          voiceover?: string | null
         }
         Update: {
+          approved_at?: string | null
           caption?: string
           created_at?: string
           end_seconds?: number
@@ -231,6 +236,7 @@ export type Database = {
           title?: string
           user_id?: string
           video_path?: string | null
+          voiceover?: string | null
         }
         Relationships: [
           {
@@ -246,6 +252,7 @@ export type Database = {
         Row: {
           account_id: string
           account_name: string
+          base_url: string | null
           encrypted_key: string
           kind: string
           model: string
@@ -256,6 +263,7 @@ export type Database = {
         Insert: {
           account_id?: string
           account_name?: string
+          base_url?: string | null
           encrypted_key: string
           kind: string
           model?: string
@@ -266,6 +274,7 @@ export type Database = {
         Update: {
           account_id?: string
           account_name?: string
+          base_url?: string | null
           encrypted_key?: string
           kind?: string
           model?: string

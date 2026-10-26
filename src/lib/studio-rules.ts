@@ -1,7 +1,19 @@
 import { z } from "zod";
 
-export const providers = ["openai", "gemini", "openrouter", "anthropic"] as const;
+export const providers = ["openai", "gemini", "openrouter", "anthropic", "custom"] as const;
 export type Provider = typeof providers[number];
+export const endpointSchema = z.url({ protocol: /^https?$/ }).max(500);
+/** Chat-completions base URL for a provider; custom endpoints must supply their own. */
+export function providerBaseUrl(provider: Provider, baseUrl?: string | null) {
+  if (provider === "openai") return "https://api.openai.com/v1";
+  if (provider === "openrouter") return "https://openrouter.ai/api/v1";
+  if (provider === "custom") {
+    const parsed = endpointSchema.safeParse((baseUrl || "").trim().replace(/\/+$/, ""));
+    if (!parsed.success) throw new Error("Enter a valid base URL for your custom endpoint (e.g. https://api.example.com/v1).");
+    return parsed.data;
+  }
+  return null;
+}
 export type Cue = { start: number; end: number; text: string };
 export const cueSchema = z.object({ start: z.number().min(0), end: z.number().min(0), text: z.string().min(1).max(4000) }).refine(c => c.end > c.start);
 export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000) }).refine(s => s.end - s.start >= 20 && s.end - s.start <= 30, "Clips must be 20–30 seconds long.");
