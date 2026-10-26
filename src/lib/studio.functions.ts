@@ -156,7 +156,10 @@ export const reviewClip=createServerFn({method:"POST"}).middleware([requireSupab
   const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript||[]).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
   const review=viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues,clip.caption,clip.voiceover||"",clip.end_seconds-clip.start_seconds));
   // Compare against the content reviewed; a simultaneous edit must not get a stale approval.
-  const update=await context.supabase.from("studio_clips").update({viral_review:review,approved_at:null}).eq("id",clip.id).eq("caption",clip.caption).eq("start_seconds",clip.start_seconds).eq("end_seconds",clip.end_seconds);
-  if(update.error)throw new Error("Couldn't save the critique.");
+  let query=context.supabase.from("studio_clips").update({viral_review:review,approved_at:null}).eq("id",clip.id).eq("caption",clip.caption).eq("start_seconds",clip.start_seconds).eq("end_seconds",clip.end_seconds);
+  query=clip.voiceover===null?query.is("voiceover",null):query.eq("voiceover",clip.voiceover);
+  query=clip.video_path===null?query.is("video_path",null):query.eq("video_path",clip.video_path);
+  const update=await query.select("id").maybeSingle();
+  if(update.error||!update.data)throw new Error("Clip changed during review. Run a fresh review.");
   return review;
 });
