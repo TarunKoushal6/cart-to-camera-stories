@@ -1,0 +1,18 @@
+CREATE TABLE public.studio_sources (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, youtube_id text NOT NULL, url text NOT NULL, title text NOT NULL, author text NOT NULL DEFAULT '', thumbnail_url text, duration double precision, transcript jsonb NOT NULL DEFAULT '[]', transcript_status text NOT NULL DEFAULT 'unavailable', created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.studio_sources TO authenticated; GRANT ALL ON public.studio_sources TO service_role;
+ALTER TABLE public.studio_sources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY source_owner ON public.studio_sources FOR ALL TO authenticated USING(user_id=auth.uid()) WITH CHECK(user_id=auth.uid());
+CREATE TABLE public.studio_clips (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, source_id uuid NOT NULL REFERENCES public.studio_sources(id) ON DELETE CASCADE, title text NOT NULL, start_seconds double precision NOT NULL, end_seconds double precision NOT NULL, score integer NOT NULL DEFAULT 0, reason text NOT NULL DEFAULT '', caption text NOT NULL DEFAULT '', video_path text, created_at timestamptz NOT NULL DEFAULT now(), CONSTRAINT short_length CHECK(end_seconds-start_seconds BETWEEN 20 AND 30 AND start_seconds>=0));
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.studio_clips TO authenticated; GRANT ALL ON public.studio_clips TO service_role;
+ALTER TABLE public.studio_clips ENABLE ROW LEVEL SECURITY;
+CREATE POLICY clip_owner ON public.studio_clips FOR ALL TO authenticated USING(user_id=auth.uid()) WITH CHECK(user_id=auth.uid() AND EXISTS(SELECT 1 FROM public.studio_sources s WHERE s.id=source_id AND s.user_id=auth.uid()));
+CREATE TABLE public.studio_credentials (user_id uuid NOT NULL, kind text NOT NULL CHECK(kind IN ('ai','facebook')), provider text NOT NULL, model text NOT NULL DEFAULT '', account_id text NOT NULL DEFAULT '', account_name text NOT NULL DEFAULT '', encrypted_key text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,kind));
+GRANT ALL ON public.studio_credentials TO service_role;
+ALTER TABLE public.studio_credentials ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.studio_posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, clip_id uuid NOT NULL REFERENCES public.studio_clips(id) ON DELETE CASCADE, platform text NOT NULL CHECK(platform IN ('instagram','facebook')), caption text NOT NULL DEFAULT '', status text NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','processing','published','failed')), scheduled_at timestamptz NOT NULL DEFAULT now(), container_id text, media_id text, error text, views bigint, likes bigint, comments bigint, metrics_at timestamptz, metrics_error text, created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.studio_posts TO authenticated; GRANT ALL ON public.studio_posts TO service_role;
+ALTER TABLE public.studio_posts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY studio_post_read ON public.studio_posts FOR SELECT TO authenticated USING(user_id=auth.uid());
+CREATE POLICY studio_post_cancel ON public.studio_posts FOR DELETE TO authenticated USING(user_id=auth.uid() AND status='scheduled');
+CREATE INDEX studio_due ON public.studio_posts(status,scheduled_at);
+COMMENT ON TABLE public.products IS 'Legacy POV product reviews retained for existing content; primary studio uses studio_sources.';

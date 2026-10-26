@@ -192,6 +192,196 @@ export type Database = {
           },
         ]
       }
+      studio_clips: {
+        Row: {
+          caption: string
+          created_at: string
+          end_seconds: number
+          id: string
+          reason: string
+          score: number
+          source_id: string
+          start_seconds: number
+          title: string
+          user_id: string
+          video_path: string | null
+        }
+        Insert: {
+          caption?: string
+          created_at?: string
+          end_seconds: number
+          id?: string
+          reason?: string
+          score?: number
+          source_id: string
+          start_seconds: number
+          title: string
+          user_id: string
+          video_path?: string | null
+        }
+        Update: {
+          caption?: string
+          created_at?: string
+          end_seconds?: number
+          id?: string
+          reason?: string
+          score?: number
+          source_id?: string
+          start_seconds?: number
+          title?: string
+          user_id?: string
+          video_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_clips_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "studio_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_credentials: {
+        Row: {
+          account_id: string
+          account_name: string
+          encrypted_key: string
+          kind: string
+          model: string
+          provider: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string
+          account_name?: string
+          encrypted_key: string
+          kind: string
+          model?: string
+          provider: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          account_name?: string
+          encrypted_key?: string
+          kind?: string
+          model?: string
+          provider?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      studio_posts: {
+        Row: {
+          caption: string
+          clip_id: string
+          comments: number | null
+          container_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          likes: number | null
+          media_id: string | null
+          metrics_at: string | null
+          metrics_error: string | null
+          platform: string
+          scheduled_at: string
+          status: string
+          user_id: string
+          views: number | null
+        }
+        Insert: {
+          caption?: string
+          clip_id: string
+          comments?: number | null
+          container_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          likes?: number | null
+          media_id?: string | null
+          metrics_at?: string | null
+          metrics_error?: string | null
+          platform: string
+          scheduled_at?: string
+          status?: string
+          user_id: string
+          views?: number | null
+        }
+        Update: {
+          caption?: string
+          clip_id?: string
+          comments?: number | null
+          container_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          likes?: number | null
+          media_id?: string | null
+          metrics_at?: string | null
+          metrics_error?: string | null
+          platform?: string
+          scheduled_at?: string
+          status?: string
+          user_id?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_posts_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "studio_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_sources: {
+        Row: {
+          author: string
+          created_at: string
+          duration: number | null
+          id: string
+          thumbnail_url: string | null
+          title: string
+          transcript: Json
+          transcript_status: string
+          url: string
+          user_id: string
+          youtube_id: string
+        }
+        Insert: {
+          author?: string
+          created_at?: string
+          duration?: number | null
+          id?: string
+          thumbnail_url?: string | null
+          title: string
+          transcript?: Json
+          transcript_status?: string
+          url: string
+          user_id: string
+          youtube_id: string
+        }
+        Update: {
+          author?: string
+          created_at?: string
+          duration?: number | null
+          id?: string
+          thumbnail_url?: string | null
+          title?: string
+          transcript?: Json
+          transcript_status?: string
+          url?: string
+          user_id?: string
+          youtube_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
