@@ -22,14 +22,20 @@ export const getStudioSettings = createServerFn({method:"POST"}).middleware([req
   if(error) throw new Error("Couldn't read settings.");
   return data || [];
 });
-export const saveProvider = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),model:z.string().min(1).max(150).regex(/^[\w./:-]+$/),key:z.string().min(10).max(3000)}).parse(d)).handler(async({data,context})=>{
+export const saveProvider = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),model:z.string().min(1).max(150).regex(/^[\w./:-]+$/),key:z.string().min(10).max(3000),baseUrl:z.string().max(500).nullable().optional()}).parse(d)).handler(async({data,context})=>{
   const secret=process.env["STUDIO_ENCRYPTION_KEY"];
   if(!secret) throw new Error("Secure key storage is not configured.");
+  const baseUrl=data.provider==="custom"?providerBaseUrl("custom",data.baseUrl):null;
   const {encrypt} = await import("./studio-crypto.server");
   const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
-  const {error} = await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"ai",provider:data.provider,model:data.model,encrypted_key:await encrypt(data.key.trim(),secret),updated_at:new Date().toISOString()});
+  const {error} = await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"ai",provider:data.provider,model:data.model,base_url:baseUrl,encrypted_key:await encrypt(data.key.trim(),secret),updated_at:new Date().toISOString()});
   if(error) throw new Error("Couldn't save the key.");
   return {saved:true};
+});
+export const listModels = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),key:z.string().min(10).max(3000),baseUrl:z.string().max(500).nullable().optional()}).parse(d)).handler(async({data})=>{
+  const baseUrl=data.provider==="custom"?endpointSchema.parse((data.baseUrl || "").trim().replace(/\/+$/,"")):null;
+  const {fetchModels}=await import("./studio-ai.server");
+  return {models:await fetchModels(data.provider,data.key.trim(),baseUrl)};
 });
 export const removeCredential = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({kind:z.enum(["ai","facebook"])}).parse(d)).handler(async({data,context})=>{
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
