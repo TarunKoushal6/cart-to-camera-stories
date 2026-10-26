@@ -19,6 +19,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedClipsIdRouteImport } from './routes/_authenticated/clips.$id'
 import { Route as AuthenticatedReviewsIdRouteImport } from './routes/_authenticated/reviews.$id'
 import { Route as ApiPublicJobsPublishDueRouteImport } from './routes/api/public/jobs/publish-due'
+import { Route as ApiPublicOauthYoutubeCallbackRouteImport } from './routes/api/public/oauth/youtube/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -69,6 +70,12 @@ const ApiPublicJobsPublishDueRoute = ApiPublicJobsPublishDueRouteImport.update({
   path: '/api/public/jobs/publish-due',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicOauthYoutubeCallbackRoute =
+  ApiPublicOauthYoutubeCallbackRouteImport.update({
+    id: '/api/public/oauth/youtube/callback',
+    path: '/api/public/oauth/youtube/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
+  '/api/public/oauth/youtube/callback': typeof ApiPublicOauthYoutubeCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -91,6 +99,7 @@ export interface FileRoutesByTo {
   '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
+  '/api/public/oauth/youtube/callback': typeof ApiPublicOauthYoutubeCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,6 +113,7 @@ export interface FileRoutesById {
   '/_authenticated/clips/$id': typeof AuthenticatedClipsIdRoute
   '/_authenticated/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
+  '/api/public/oauth/youtube/callback': typeof ApiPublicOauthYoutubeCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
+    | '/api/public/oauth/youtube/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
+    | '/api/public/oauth/youtube/callback'
   id:
     | '__root__'
     | '/'
@@ -140,12 +152,14 @@ export interface FileRouteTypes {
     | '/_authenticated/clips/$id'
     | '/_authenticated/reviews/$id'
     | '/api/public/jobs/publish-due'
+    | '/api/public/oauth/youtube/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ApiPublicJobsPublishDueRoute: typeof ApiPublicJobsPublishDueRoute
+  ApiPublicOauthYoutubeCallbackRoute: typeof ApiPublicOauthYoutubeCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -220,6 +234,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsPublishDueRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/oauth/youtube/callback': {
+      id: '/api/public/oauth/youtube/callback'
+      path: '/api/public/oauth/youtube/callback'
+      fullPath: '/api/public/oauth/youtube/callback'
+      preLoaderRoute: typeof ApiPublicOauthYoutubeCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -251,6 +272,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ApiPublicJobsPublishDueRoute: ApiPublicJobsPublishDueRoute,
+  ApiPublicOauthYoutubeCallbackRoute: ApiPublicOauthYoutubeCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

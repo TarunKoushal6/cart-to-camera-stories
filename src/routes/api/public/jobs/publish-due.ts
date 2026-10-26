@@ -25,6 +25,9 @@ export const Route = createFileRoute("/api/public/jobs/publish-due")({
           await advanceStudioPost(supabaseAdmin, post, process.env["STUDIO_ENCRYPTION_KEY"] || "");
           n++;
         }
+        const {pollYouTubePost}=await import("@/lib/youtube-publishing.server");
+        const {data:youtubeDue}=await supabaseAdmin.from("youtube_posts").select("*").in("status",["processing","scheduled"]).limit(20);
+        for(const post of youtubeDue||[]){await pollYouTubePost(supabaseAdmin,post);n++;}
         return Response.json({ processed: n });
       },
     },
