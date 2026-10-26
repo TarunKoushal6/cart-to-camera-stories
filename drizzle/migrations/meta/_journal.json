@@ -22,6 +22,13 @@
       "when": 1792994653010,
       "tag": "0002_repurposing_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792995587205,
+      "tag": "0003_youtube_shorts",
+      "breakpoints": true
     }
   ]
 }

@@ -382,6 +382,119 @@ export type Database = {
         }
         Relationships: []
       }
+      youtube_connections: {
+        Row: {
+          channel_id: string
+          channel_name: string
+          encrypted_tokens: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          channel_name: string
+          encrypted_tokens: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          channel_name?: string
+          encrypted_tokens?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      youtube_oauth_states: {
+        Row: {
+          expires_at: string
+          redirect_uri: string
+          state_hash: string
+          user_id: string
+        }
+        Insert: {
+          expires_at: string
+          redirect_uri: string
+          state_hash: string
+          user_id: string
+        }
+        Update: {
+          expires_at?: string
+          redirect_uri?: string
+          state_hash?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      youtube_posts: {
+        Row: {
+          clip_id: string
+          comments: number | null
+          created_at: string
+          description: string
+          error: string | null
+          id: string
+          likes: number | null
+          media_id: string | null
+          metrics_at: string | null
+          metrics_error: string | null
+          privacy: string
+          scheduled_at: string | null
+          status: string
+          tags: string[]
+          title: string
+          user_id: string
+          views: number | null
+        }
+        Insert: {
+          clip_id: string
+          comments?: number | null
+          created_at?: string
+          description?: string
+          error?: string | null
+          id?: string
+          likes?: number | null
+          media_id?: string | null
+          metrics_at?: string | null
+          metrics_error?: string | null
+          privacy?: string
+          scheduled_at?: string | null
+          status?: string
+          tags?: string[]
+          title: string
+          user_id: string
+          views?: number | null
+        }
+        Update: {
+          clip_id?: string
+          comments?: number | null
+          created_at?: string
+          description?: string
+          error?: string | null
+          id?: string
+          likes?: number | null
+          media_id?: string | null
+          metrics_at?: string | null
+          metrics_error?: string | null
+          privacy?: string
+          scheduled_at?: string | null
+          status?: string
+          tags?: string[]
+          title?: string
+          user_id?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_posts_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "studio_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,0 +1,11 @@
+CREATE TABLE public.youtube_connections (user_id uuid PRIMARY KEY, channel_id text NOT NULL, channel_name text NOT NULL, encrypted_tokens text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+GRANT ALL ON public.youtube_connections TO service_role;
+ALTER TABLE public.youtube_connections ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.youtube_oauth_states (state_hash text PRIMARY KEY, user_id uuid NOT NULL, redirect_uri text NOT NULL, expires_at timestamptz NOT NULL);
+GRANT ALL ON public.youtube_oauth_states TO service_role;
+ALTER TABLE public.youtube_oauth_states ENABLE ROW LEVEL SECURITY;
+CREATE TABLE public.youtube_posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, clip_id uuid NOT NULL REFERENCES public.studio_clips(id) ON DELETE CASCADE, title text NOT NULL, description text NOT NULL DEFAULT '', tags text[] NOT NULL DEFAULT '{}', privacy text NOT NULL DEFAULT 'private' CHECK (privacy IN ('public','unlisted','private')), status text NOT NULL DEFAULT 'processing' CHECK (status IN ('processing','scheduled','published','failed')), scheduled_at timestamptz, media_id text, error text, views bigint, likes bigint, comments bigint, metrics_at timestamptz, metrics_error text, created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.youtube_posts TO authenticated;
+GRANT ALL ON public.youtube_posts TO service_role;
+ALTER TABLE public.youtube_posts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY youtube_posts_owner ON public.youtube_posts TO authenticated USING (user_id=auth.uid()) WITH CHECK (user_id=auth.uid());
