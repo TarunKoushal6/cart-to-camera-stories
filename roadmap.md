@@ -1,3 +1,4 @@
+- [ ] Automate video-link intake → multiple relevant source clips → cloud MP4s → next-day scheduling, without voiceover or per-clip manual work; identify an unattended source-download and rendering service before implementation.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
 - [x] Disable email verification on signup (auto-confirm); credentials stay encrypted per user in the cloud.
