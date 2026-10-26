@@ -16,6 +16,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedInstagramRouteImport } from './routes/_authenticated/instagram'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedVoiceoverRouteImport } from './routes/_authenticated/voiceover'
 import { Route as AuthenticatedClipsIdRouteImport } from './routes/_authenticated/clips.$id'
 import { Route as AuthenticatedReviewsIdRouteImport } from './routes/_authenticated/reviews.$id'
 import { Route as ApiPublicJobsPublishDueRouteImport } from './routes/api/public/jobs/publish-due'
@@ -55,6 +56,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedVoiceoverRoute = AuthenticatedVoiceoverRouteImport.update({
+  id: '/voiceover',
+  path: '/voiceover',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedClipsIdRoute = AuthenticatedClipsIdRouteImport.update({
   id: '/clips/$id',
   path: '/clips/$id',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/instagram': typeof AuthenticatedInstagramRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/voiceover': typeof AuthenticatedVoiceoverRoute
   '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/instagram': typeof AuthenticatedInstagramRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/voiceover': typeof AuthenticatedVoiceoverRoute
   '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/_authenticated/instagram': typeof AuthenticatedInstagramRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/voiceover': typeof AuthenticatedVoiceoverRoute
   '/_authenticated/clips/$id': typeof AuthenticatedClipsIdRoute
   '/_authenticated/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/instagram'
     | '/schedule'
     | '/settings'
+    | '/voiceover'
     | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/instagram'
     | '/schedule'
     | '/settings'
+    | '/voiceover'
     | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/_authenticated/instagram'
     | '/_authenticated/schedule'
     | '/_authenticated/settings'
+    | '/_authenticated/voiceover'
     | '/_authenticated/clips/$id'
     | '/_authenticated/reviews/$id'
     | '/api/public/jobs/publish-due'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/voiceover': {
+      id: '/_authenticated/voiceover'
+      path: '/voiceover'
+      fullPath: '/voiceover'
+      preLoaderRoute: typeof AuthenticatedVoiceoverRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/clips/$id': {
       id: '/_authenticated/clips/$id'
       path: '/clips/$id'
@@ -250,6 +269,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInstagramRoute: typeof AuthenticatedInstagramRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedVoiceoverRoute: typeof AuthenticatedVoiceoverRoute
   AuthenticatedClipsIdRoute: typeof AuthenticatedClipsIdRoute
   AuthenticatedReviewsIdRoute: typeof AuthenticatedReviewsIdRoute
 }
@@ -260,6 +280,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInstagramRoute: AuthenticatedInstagramRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedVoiceoverRoute: AuthenticatedVoiceoverRoute,
   AuthenticatedClipsIdRoute: AuthenticatedClipsIdRoute,
   AuthenticatedReviewsIdRoute: AuthenticatedReviewsIdRoute,
 }

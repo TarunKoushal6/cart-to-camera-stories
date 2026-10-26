@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { providers, youtubeId, cueSchema, segmentSchema } from "./studio-rules";
+import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl } from "./studio-rules";
 
 export const importYouTube = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({url:z.string().max(2000)}).parse(d)).handler(async({data,context})=>{
   const id = youtubeId(data.url);
@@ -18,18 +18,24 @@ export const saveTranscript = createServerFn({method:"POST"}).middleware([requir
 });
 export const getStudioSettings = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).handler(async({context})=>{
   const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
-  const {data,error} = await supabaseAdmin.from("studio_credentials").select("kind,provider,model,account_id,account_name,updated_at").eq("user_id",context.userId);
+  const {data,error} = await supabaseAdmin.from("studio_credentials").select("kind,provider,model,base_url,account_id,account_name,updated_at").eq("user_id",context.userId);
   if(error) throw new Error("Couldn't read settings.");
   return data || [];
 });
-export const saveProvider = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),model:z.string().min(1).max(150).regex(/^[\w./:-]+$/),key:z.string().min(10).max(3000)}).parse(d)).handler(async({data,context})=>{
+export const saveProvider = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),model:z.string().min(1).max(150).regex(/^[\w./:-]+$/),key:z.string().min(10).max(3000),baseUrl:z.string().max(500).nullable().optional()}).parse(d)).handler(async({data,context})=>{
   const secret=process.env["STUDIO_ENCRYPTION_KEY"];
   if(!secret) throw new Error("Secure key storage is not configured.");
+  const baseUrl=data.provider==="custom"?providerBaseUrl("custom",data.baseUrl):null;
   const {encrypt} = await import("./studio-crypto.server");
   const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
-  const {error} = await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"ai",provider:data.provider,model:data.model,encrypted_key:await encrypt(data.key.trim(),secret),updated_at:new Date().toISOString()});
+  const {error} = await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"ai",provider:data.provider,model:data.model,base_url:baseUrl,encrypted_key:await encrypt(data.key.trim(),secret),updated_at:new Date().toISOString()});
   if(error) throw new Error("Couldn't save the key.");
   return {saved:true};
+});
+export const listModels = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({provider:z.enum(providers),key:z.string().min(10).max(3000),baseUrl:z.string().max(500).nullable().optional()}).parse(d)).handler(async({data})=>{
+  const baseUrl=data.provider==="custom"?endpointSchema.parse((data.baseUrl || "").trim().replace(/\/+$/,"")):null;
+  const {fetchModels}=await import("./studio-ai.server");
+  return {models:await fetchModels(data.provider,data.key.trim(),baseUrl)};
 });
 export const removeCredential = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({kind:z.enum(["ai","facebook"])}).parse(d)).handler(async({data,context})=>{
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
@@ -48,7 +54,7 @@ export const analyzeSource = createServerFn({method:"POST"}).middleware([require
   if(!secret) throw new Error("Secure key storage is not configured.");
   const {decrypt}=await import("./studio-crypto.server");
   const {analyzeWithKey}=await import("./studio-ai.server");
-  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues);
+  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url);
   const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:s.title})));
   if(error) throw new Error(error.message);
   return {count:segments.length};
@@ -107,4 +113,35 @@ export const refreshAnalytics=createServerFn({method:"POST"}).middleware([requir
   const {refreshStudioMetrics}=await import("./studio-meta.server");
   for(const post of posts || []) await refreshStudioMetrics(supabaseAdmin,post,process.env["STUDIO_ENCRYPTION_KEY"] || "");
   return {refreshed:posts?.length || 0};
+});
+export const saveClipPlan=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid(),caption:z.string().max(2200),voiceover:z.string().max(4000)}).parse(d)).handler(async({data,context})=>{
+  const {error}=await context.supabase.from("studio_clips").update({caption:data.caption,voiceover:data.voiceover,approved_at:null}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't save the clip plan.");
+  return {saved:true};
+});
+export const approveClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+  const {data:c}=await context.supabase.from("studio_clips").select("video_path").eq("id",data.clipId).single();
+  if(!c?.video_path) throw new Error("Export and save the clip before approving.");
+  const {error}=await context.supabase.from("studio_clips").update({approved_at:new Date().toISOString()}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't approve the clip.");
+  return {approved:true};
+});
+export const generateClipText=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+  const {data:clip}=await context.supabase.from("studio_clips").select("*,studio_sources(transcript)").eq("id",data.clipId).single();
+  if(!clip) throw new Error("Clip not found.");
+  const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript || []).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
+  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
+  const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
+  let caption=clip.title,voiceover=cues.map(c=>c.text).join(" ").slice(0,1200);
+  if(credential){
+    const secret=process.env["STUDIO_ENCRYPTION_KEY"];
+    if(!secret) throw new Error("Secure key storage is not configured.");
+    const {decrypt}=await import("./studio-crypto.server");
+    const {writeClipText}=await import("./studio-ai.server");
+    ({caption,voiceover}=await writeClipText(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues));
+  }
+  if(!voiceover) voiceover=clip.title;
+  const {error}=await context.supabase.from("studio_clips").update({caption,voiceover,approved_at:null}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't save the generated text.");
+  return {caption,voiceover};
 });
