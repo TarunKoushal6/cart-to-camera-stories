@@ -15,9 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 export const Route = createFileRoute("/_authenticated/reviews/$id")({
   head: () => ({
     meta: [
-      { title: "POV review — POVreel" },
+      { title: "Legacy product review — Cutline" },
       { name: "description", content: "Script, video and posting for a POV product review." },
-      { property: "og:title", content: "POV review — POVreel" },
+      { property: "og:title", content: "Legacy product review — Cutline" },
       { property: "og:description", content: "Script, video and posting for a POV product review." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

@@ -15,3 +15,9 @@
 - The app uses a single dark theme defined in `:root` — no light/dark toggle.
 - Review creation uses persisted script modes and language; custom text bypasses AI, and actions mode suppresses narration in both video stages — preserves creator intent.
 - External MP4s upload directly to private owner-scoped Storage paths and attach through an authenticated verification function — avoids large server requests and cross-user attachment.
+
+- The primary Cutline studio uses owner-scoped studio_sources, studio_clips and studio_posts; legacy product routes remain to preserve existing content.
+- Personal AI and Facebook credentials are AES-GCM encrypted in service-role-only studio_credentials and accessed only after user authorization; prevents browser secret reads.
+- Studio AI analysis calls the selected provider directly with the owner’s key and never falls back to Lovable AI; preserves separate provider billing.
+- Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
+- Studio Meta posts advance via the existing protected publish-due schedule and manual refresh; asynchronous processing avoids long requests.

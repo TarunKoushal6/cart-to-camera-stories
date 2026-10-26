@@ -15,6 +15,13 @@
       "when": 1792841496375,
       "tag": "0001_review_script_modes_and_video_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792994653010,
+      "tag": "0002_repurposing_studio",
+      "breakpoints": true
     }
   ]
 }

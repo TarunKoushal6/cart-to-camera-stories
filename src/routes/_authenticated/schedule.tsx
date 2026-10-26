@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { format } from "date-fns";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { refreshStudioPosts } from "@/lib/studio.functions";
 import { refreshPost } from "@/lib/ugc.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,10 +12,10 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/_authenticated/schedule")({
   head: () => ({
     meta: [
-      { title: "Posts — POVreel" },
-      { name: "description", content: "Scheduled and published Instagram reels." },
-      { property: "og:title", content: "Posts — POVreel" },
-      { property: "og:description", content: "Scheduled and published Instagram reels." },
+      { title: "Posts — Cutline" },
+      { name: "description", content: "Scheduled and published Instagram and Facebook clips." },
+      { property: "og:title", content: "Posts — Cutline" },
+      { property: "og:description", content: "Scheduled and published Instagram and Facebook clips." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -25,6 +26,8 @@ export const Route = createFileRoute("/_authenticated/schedule")({
 function Schedule() {
   const qc = useQueryClient();
   const refresh = useServerFn(refreshPost);
+  const refreshClips = useServerFn(refreshStudioPosts);
+  const {data:clipPosts=[]}=useQuery({queryKey:["studio-posts"],queryFn:async()=>{const r=await supabase.from("studio_posts").select("*,studio_clips(title)").order("scheduled_at",{ascending:false});if(r.error)throw r.error;return r.data;},refetchInterval:30000});
   const { data: posts = [] } = useQuery({
     queryKey: ["posts"],
     queryFn: async () =>
@@ -36,8 +39,11 @@ function Schedule() {
     <div>
       <h1 className="font-display text-4xl font-bold">Posts</h1>
       <p className="text-muted-foreground mt-1">Scheduled reels go out automatically within about 5 minutes of their time.</p>
+      <div className="mt-6"><Button variant="outline" onClick={async()=>{await refreshClips();qc.invalidateQueries({queryKey:["studio-posts"]});}}> <RefreshCw className="h-4 w-4"/>Refresh clip posts</Button></div>
+      <div className="mt-5 divide-y divide-border">{!clipPosts.length&&<p className="py-8 text-muted-foreground">No clip posts yet.</p>}{clipPosts.map(p=><div key={p.id} className="py-4 flex flex-wrap gap-3 items-center"><div className="flex-1 min-w-0"><Link to="/clips/$id" params={{id:p.clip_id}} className="font-medium">{p.studio_clips?.title}</Link><p className="text-xs text-muted-foreground capitalize mt-1">{p.platform} · {format(new Date(p.scheduled_at),"d MMM yyyy, h:mm a")}</p>{p.error&&<p className="text-xs text-destructive mt-2">{p.error}</p>}</div><Badge variant={p.status==="failed"?"destructive":"secondary"}>{p.status}</Badge>{p.status==="scheduled"&&<Button variant="ghost" size="icon" aria-label="Cancel clip post" onClick={async()=>{await supabase.from("studio_posts").delete().eq("id",p.id);qc.invalidateQueries({queryKey:["studio-posts"]});}}><Trash2 className="h-4 w-4"/></Button>}</div>)}</div>
+      {!!posts.length&&<h2 className="text-xl font-display mt-10">Legacy product posts</h2>}
       <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-card">
-        {posts.length === 0 && <p className="p-5 text-muted-foreground">Nothing scheduled yet.</p>}
+        
         {posts.map((p) => (
           <div key={p.id} className="p-4 flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1">
