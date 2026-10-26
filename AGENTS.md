@@ -21,3 +21,7 @@
 - Studio AI analysis calls the selected provider directly with the owner’s key and never falls back to Lovable AI; preserves separate provider billing.
 - Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
 - Studio Meta posts advance via the existing protected publish-due schedule and manual refresh; asynchronous processing avoids long requests.
+
+- YouTube OAuth uses atomic single-use hashed states bound to the authenticated owner and stores encrypted offline tokens only in server-role tables; prevents callback forgery and credential exposure.
+- YouTube uploads stream saved MP4s to a validated Google resumable upload URL; Google publishAt schedules public release and the existing job polls processing status.
+- YouTube counts come from videos.list statistics and join Meta metrics in the UI; missing counts remain unknown rather than zero.
