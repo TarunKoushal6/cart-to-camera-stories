@@ -54,7 +54,7 @@ export const analyzeSource = createServerFn({method:"POST"}).middleware([require
   if(!secret) throw new Error("Secure key storage is not configured.");
   const {decrypt}=await import("./studio-crypto.server");
   const {analyzeWithKey}=await import("./studio-ai.server");
-  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues);
+  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url);
   const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:s.title})));
   if(error) throw new Error(error.message);
   return {count:segments.length};
