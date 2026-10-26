@@ -25,3 +25,5 @@
 - YouTube OAuth uses atomic single-use hashed states bound to the authenticated owner and stores encrypted offline tokens only in server-role tables; prevents callback forgery and credential exposure.
 - YouTube uploads stream saved MP4s to a validated Google resumable upload URL; Google publishAt schedules public release and the existing job polls processing status.
 - YouTube counts come from videos.list statistics and join Meta metrics in the UI; missing counts remain unknown rather than zero.
+- Custom AI endpoints are OpenAI-compatible chat-completions bases stored per user in studio_credentials.base_url; model lists come from the provider's /models endpoint — keeps any provider working without code changes.
+- Clips require owner approval (studio_clips.approved_at) before publishing; editing caption or voiceover resets approval — guarantees nothing posts without explicit consent.
