@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { LayoutGrid, CalendarClock, Instagram, LogOut } from "lucide-react";
+import { Scissors, CalendarClock, Instagram, LogOut, BarChart3, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -10,9 +11,11 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 const nav = [
-  { to: "/dashboard", label: "Products", icon: LayoutGrid },
+  { to: "/dashboard", label: "Studio", icon: Scissors },
   { to: "/schedule", label: "Posts", icon: CalendarClock },
   { to: "/instagram", label: "Instagram", icon: Instagram },
+  { to: "/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/settings", label: "Settings", icon: Settings2 },
 ] as const;
 
 function Layout() {
@@ -25,9 +28,9 @@ function Layout() {
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[220px_1fr]">
-      <aside className="border-b md:border-b-0 md:border-r border-border bg-sidebar p-4 flex md:flex-col gap-2 md:gap-1">
+      <aside className="border-b md:border-b-0 md:border-r border-border bg-sidebar p-3 md:p-5 flex flex-wrap md:flex-nowrap md:flex-col gap-1">
         <div className="font-display text-lg font-bold px-2 md:mb-6 mr-auto md:mr-0">
-          POV<span className="text-primary">reel</span>
+          <span className="flex items-center gap-2"><Scissors className="h-5 w-5 text-primary"/>Cutline<span className="text-primary">.</span></span>
         </div>
         {nav.map((n) => (
           <Link
@@ -40,15 +43,15 @@ function Layout() {
             <span className="hidden sm:inline">{n.label}</span>
           </Link>
         ))}
-        <button
+        <Button variant="ghost"
           onClick={() => supabase.auth.signOut()}
           className="md:mt-auto flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
           <span className="hidden sm:inline">Sign out</span>
-        </button>
+        </Button>
       </aside>
-      <main className="p-6 lg:p-10 max-w-6xl w-full">
+      <main className="p-5 lg:p-10 max-w-7xl w-full min-w-0">
         <Outlet />
       </main>
     </div>

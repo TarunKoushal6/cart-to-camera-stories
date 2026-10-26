@@ -19,6 +19,12 @@ export const Route = createFileRoute("/api/public/jobs/publish-due")({
           await advancePost(supabaseAdmin, p);
           n++;
         }
+        const { advanceStudioPost } = await import("@/lib/studio-meta.server");
+        const { data: clipsDue } = await supabaseAdmin.from("studio_posts").select("*").or(`and(status.eq.scheduled,scheduled_at.lte.${new Date().toISOString()}),status.eq.processing`).limit(20);
+        for (const post of clipsDue ?? []) {
+          await advanceStudioPost(supabaseAdmin, post, process.env["STUDIO_ENCRYPTION_KEY"] || "");
+          n++;
+        }
         return Response.json({ processed: n });
       },
     },
