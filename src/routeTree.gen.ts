@@ -16,6 +16,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedInstagramRouteImport } from './routes/_authenticated/instagram'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedClipsIdRouteImport } from './routes/_authenticated/clips.$id'
 import { Route as AuthenticatedReviewsIdRouteImport } from './routes/_authenticated/reviews.$id'
 import { Route as ApiPublicJobsPublishDueRouteImport } from './routes/api/public/jobs/publish-due'
 
@@ -53,6 +54,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedClipsIdRoute = AuthenticatedClipsIdRouteImport.update({
+  id: '/clips/$id',
+  path: '/clips/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedReviewsIdRoute = AuthenticatedReviewsIdRouteImport.update({
   id: '/reviews/$id',
   path: '/reviews/$id',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/instagram': typeof AuthenticatedInstagramRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/instagram': typeof AuthenticatedInstagramRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/clips/$id': typeof AuthenticatedClipsIdRoute
   '/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/_authenticated/instagram': typeof AuthenticatedInstagramRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/clips/$id': typeof AuthenticatedClipsIdRoute
   '/_authenticated/reviews/$id': typeof AuthenticatedReviewsIdRoute
   '/api/public/jobs/publish-due': typeof ApiPublicJobsPublishDueRoute
 }
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/instagram'
     | '/schedule'
     | '/settings'
+    | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
   fileRoutesByTo: FileRoutesByTo
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/instagram'
     | '/schedule'
     | '/settings'
+    | '/clips/$id'
     | '/reviews/$id'
     | '/api/public/jobs/publish-due'
   id:
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/_authenticated/instagram'
     | '/_authenticated/schedule'
     | '/_authenticated/settings'
+    | '/_authenticated/clips/$id'
     | '/_authenticated/reviews/$id'
     | '/api/public/jobs/publish-due'
   fileRoutesById: FileRoutesById
@@ -187,6 +199,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/clips/$id': {
+      id: '/_authenticated/clips/$id'
+      path: '/clips/$id'
+      fullPath: '/clips/$id'
+      preLoaderRoute: typeof AuthenticatedClipsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/reviews/$id': {
       id: '/_authenticated/reviews/$id'
       path: '/reviews/$id'
@@ -210,6 +229,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInstagramRoute: typeof AuthenticatedInstagramRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedClipsIdRoute: typeof AuthenticatedClipsIdRoute
   AuthenticatedReviewsIdRoute: typeof AuthenticatedReviewsIdRoute
 }
 
@@ -219,6 +239,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInstagramRoute: AuthenticatedInstagramRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedClipsIdRoute: AuthenticatedClipsIdRoute,
   AuthenticatedReviewsIdRoute: AuthenticatedReviewsIdRoute,
 }
 

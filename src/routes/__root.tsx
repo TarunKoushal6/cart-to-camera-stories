@@ -79,11 +79,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "POVreel — Faceless UGC Studio" },
-      { name: "description", content: "Turn Amazon and Flipkart products into POV review reels and post them to Instagram." },
+      { title: "Cutline — Repurposing Studio" },
+      { name: "description", content: "Repurpose long YouTube videos into captioned shorts for Instagram and Facebook." },
       
-      { property: "og:title", content: "POVreel — Faceless UGC Studio" },
-      { property: "og:description", content: "Turn Amazon and Flipkart products into POV review reels and post them to Instagram." },
+      { property: "og:title", content: "Cutline — Repurposing Studio" },
+      { property: "og:description", content: "Repurpose long YouTube videos into captioned shorts for Instagram and Facebook." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       
