@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated")({
 const nav = [
   { to: "/dashboard", label: "Studio", icon: Scissors },
   { to: "/schedule", label: "Posts", icon: CalendarClock },
-  { to: "/instagram", label: "Instagram", icon: Instagram },
+  { to: "/instagram", label: "Social accounts", icon: Instagram },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ] as const;
@@ -35,6 +35,8 @@ function Layout() {
         {nav.map((n) => (
           <Link
             key={n.to}
+            title={n.label}
+            aria-label={n.label}
             to={n.to}
             className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             activeProps={{ className: "bg-sidebar-accent text-foreground" }}

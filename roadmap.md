@@ -1,8 +1,10 @@
-- [ ] Pivot intake to YouTube metadata and free captions with transcript fallback.
-- [ ] Add encrypted personal provider settings and 20–30 second segment analysis.
-- [ ] Add local vertical cropping and burned-in karaoke captions.
-- [ ] Add Instagram/Facebook clip publishing and real social analytics.
-- [ ] Verify authenticated studio workflows, rules and rendering.
+- [x] Pivot intake to YouTube metadata and free captions with transcript fallback.
+- [x] Add encrypted personal provider settings and 20–30 second segment analysis.
+- [x] Add local vertical cropping and burned-in karaoke captions.
+- [x] Add Instagram/Facebook clip publishing and real social analytics.
+- [x] Verify authenticated intake, transcript import, manual selection, 720×1280 / 25s export, burned captions, storage read-back and mobile rendering; 17 tests pass.
+- [ ] Verify live AI analysis with a real personal provider key — blocked on a user-supplied key.
+- [ ] Verify live Meta publishing and metrics — blocked on connected Instagram/Facebook accounts.
 - [x] Add AI language selection, custom scripts and actions-only review creation.
 - [x] Add external video uploads and editable posting details.
 - [x] Verify rules, authenticated custom creation/upload persistence and desktop/mobile rendering (11 tests passed). AI/video generation was not invoked; Instagram sending was not tested without a connected account. Uploaded MP4 fetched successfully; sandbox browser lacks H.264 playback support.
