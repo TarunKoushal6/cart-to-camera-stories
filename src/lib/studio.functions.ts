@@ -18,7 +18,7 @@ export const saveTranscript = createServerFn({method:"POST"}).middleware([requir
 });
 export const getStudioSettings = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).handler(async({context})=>{
   const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
-  const {data,error} = await supabaseAdmin.from("studio_credentials").select("kind,provider,model,account_id,account_name,updated_at").eq("user_id",context.userId);
+  const {data,error} = await supabaseAdmin.from("studio_credentials").select("kind,provider,model,base_url,account_id,account_name,updated_at").eq("user_id",context.userId);
   if(error) throw new Error("Couldn't read settings.");
   return data || [];
 });
