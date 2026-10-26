@@ -22,7 +22,7 @@ export async function edgeSpeech(input:unknown):Promise<Uint8Array> {
       if(typeof event.data==="string"){if(event.data.includes("Path:turn.end"))finish();return;}
       if(!(event.data instanceof ArrayBuffer))return;
       const data=new Uint8Array(event.data);if(data.length<2)return;
-      const length=(data[0]<<8)|data[1];if(length+2>data.length)return;
+      const length=((data[0]??0)<<8)|(data[1]??0);if(length+2>data.length)return;
       const header=new TextDecoder().decode(data.slice(2,length+2));
       if(!header.includes("Path:audio")||!header.includes("audio/mpeg"))return;
       const payload=data.slice(length+2);size+=payload.length;
