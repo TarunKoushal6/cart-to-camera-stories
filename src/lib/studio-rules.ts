@@ -22,7 +22,7 @@ export function parseTranscript(input: string): Cue[] {
     const i = lines.findIndex(l => l.includes("-->"));
     if (i < 0) continue;
     const match = lines[i]?.match(/([\d:. ,]+)\s*-->\s*([\d:.,]+)/);
-    if (!match) continue;
+    if (!match?.[1] || !match[2]) continue;
     const text = lines.slice(i + 1).join(" ").replace(/<[^>]*>/g, "").trim();
     const cue = { start: time(match[1].trim()), end: time(match[2].trim()), text };
     if (cueSchema.safeParse(cue).success) cues.push(cue);
