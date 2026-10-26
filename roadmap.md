@@ -1,7 +1,10 @@
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
 - [x] Disable email verification on signup (auto-confirm); credentials stay encrypted per user in the cloud.
-- [ ] Add AI voice generation for voiceover scripts — user will specify the engine later.
+- [x] Add free Edge-TTS Hindi/English voiceover generation; real Hindi protocol request returned a playable 4.5-second MP3.
+- [x] Add free browser transcription, transcript paste and caption-independent moment suggestions; real browser Whisper returned timed speech captions.
+- [x] Add persisted personal-AI viral critiques before owner approval; 32 rule tests pass.
+- [ ] Verify signed-in voice generation/export and personal-AI critique persistence — requesting user has no matching auth account; requires preview sign-in and a saved personal AI key. Hosted Edge WebSocket wrapper remains unverified.
 - [ ] Verify custom endpoint model scanning and analysis with a real endpoint key — blocked on a user-supplied endpoint.
 - [x] Add custom Google OAuth, YouTube upload/scheduling metadata, processing polling and views/likes/comments.
 - [ ] Verify live Google consent, Shorts uploads, scheduled release and YouTube counts — Google OAuth credentials were skipped; requires credentials and a connected channel.

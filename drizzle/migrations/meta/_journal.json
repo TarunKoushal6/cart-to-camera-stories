@@ -36,6 +36,13 @@
       "when": 1792996620828,
       "tag": "0004_custom_ai_endpoint_and_voiceover",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793003929286,
+      "tag": "0005_clip_viral_reviews",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { segmentSchema, providerBaseUrl, type Provider, type Cue } from "./studio-rules";
 import { z } from "zod";
+import { viralReviewSchema } from "./clip-review-rules";
 
 /** Lists the models a key can use, so the settings page can offer a dropdown. */
 export async function fetchModels(provider: Provider, key: string, baseUrl?: string | null): Promise<string[]> {
@@ -28,8 +29,8 @@ export async function fetchModels(provider: Provider, key: string, baseUrl?: str
   return ids;
 }
 
-export async function analyzeWithKey(provider: Provider, model: string, key: string, cues: Cue[], baseUrl?: string | null) {
-  const prompt = `Find up to 6 high-retention, self-contained viral hooks in this transcript. Each segment MUST be 20–30 seconds, within the transcript timestamps. Do not invent words or times. Score potential 0–100, not a guaranteed prediction. Return ONLY JSON: {"segments":[{"title":"...","start":0,"end":25,"score":85,"reason":"..."}]}. Transcript: ${JSON.stringify(cues)}`;
+export async function analyzeWithKey(provider: Provider, model: string, key: string, cues: Cue[], baseUrl?: string | null, structure?: {title:string;duration:number;outline:string}) {
+  const prompt = `Find up to 6 high-retention, self-contained viral hooks. Each segment MUST be 20–30 seconds, within the supplied duration. Do not invent words. Score potential 0–100, not a guaranteed prediction. ${cues.length?"Use actual transcript timestamps.":"You have NOT watched or heard this video. Suggest provisional candidate windows based ONLY on the title, duration and user outline. Every reason must start with 'Structure-only candidate: ' and disclose that speech, pacing and timing are unverified. Do not claim actual scene content."} Return ONLY JSON: {"segments":[{"title":"...","start":0,"end":25,"score":85,"reason":"..."}]}. Transcript: ${JSON.stringify(cues)}. Structure: ${JSON.stringify(structure||null)}`;
   let endpoint: string, headers: Record<string,string>, body: object;
   if (provider === "gemini") {
     endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
@@ -51,9 +52,23 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
   const parsed = z.object({ segments: z.array(segmentSchema).min(1).max(6) }).parse(JSON.parse(text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")));
-  const last = Math.max(...cues.map(c=>c.end));
+  const last = cues.length?Math.max(...cues.map(c=>c.end)):structure?.duration||0;
   if (parsed.segments.some(s => s.end > last)) throw new Error("The provider returned a segment outside the transcript. Try again.");
   return parsed.segments;
+}
+
+export async function reviewWithKey(provider:Provider,model:string,key:string,baseUrl:string|null,title:string,cues:Cue[],caption:string,voiceover:string,duration:number) {
+  const prompt=`Critique this ${duration}s short: ${JSON.stringify({title,cues,caption,voiceover})}. You have not seen the rendered video. Rate hook, pacing and retention 0-100 using ONLY this evidence. Pacing is a transcript/script estimate, not a measured visual edit. Never promise virality. Return ONLY JSON {"hook":70,"pacing":70,"retention":70,"verdict":"Viral or Needs Work","critique":"clear critique with evidence limitations","feedback":["specific actionable edit"],"evidence":"${cues.length?"transcript":"structure-only"}"}. If transcript is absent, label the critique provisional and do not invent speech or scenes.`;
+  let endpoint:string,headers:Record<string,string>,body:object;
+  if(provider==="gemini"){endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;headers={"Content-Type":"application/json","x-goog-api-key":key};body={contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}};}
+  else if(provider==="anthropic"){endpoint="https://api.anthropic.com/v1/messages";headers={"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"};body={model,max_tokens:1800,messages:[{role:"user",content:prompt}]};}
+  else{endpoint=`${providerBaseUrl(provider,baseUrl)}/chat/completions`;headers={"Content-Type":"application/json",Authorization:`Bearer ${key}`};body={model,messages:[{role:"user",content:prompt}],response_format:{type:"json_object"}};}
+  const r=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
+  if(!r.ok)throw new Error(`${provider} rejected the clip review (${r.status}). Check your saved model, key and quota.`);
+  const result=await r.json() as {choices?:{message:{content:string}}[];content?:{text?:string}[];candidates?:{content:{parts:{text?:string}[]}}[]};
+  const text=result.choices?.[0]?.message.content??result.content?.map(c=>c.text||"").join("")??result.candidates?.[0]?.content.parts.map(p=>p.text||"").join("");
+  if(!text)throw new Error("Your AI returned no critique.");
+  return viralReviewSchema.parse({...JSON.parse(text.replace(/^```(?:json)?\s*/,"").replace(/\s*```$/,"")),evidence:cues.length?"transcript":"structure-only"});
 }
 
 /** Writes a caption and spoken voiceover script for one clip from its transcript window. */

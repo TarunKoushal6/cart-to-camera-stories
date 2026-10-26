@@ -1,0 +1,9 @@
+import {describe,it,expect} from "vitest";
+import {viralReviewSchema,canApproveClip,voiceInputSchema} from "@/lib/clip-review-rules";
+const review={hook:80,pacing:72,retention:90,verdict:"Viral",critique:"Strong opening",feedback:["Trim the pause"],evidence:"transcript"};
+describe("Clip review and voice rules",()=>{
+ it("requires hook, pacing and retention scores from 0 to 100",()=>{expect(viralReviewSchema.safeParse(review).success).toBe(true);for(const field of ["hook","pacing","retention"]){expect(viralReviewSchema.safeParse({...review,[field]:101}).success).toBe(false);expect(viralReviewSchema.safeParse({...review,[field]:-1}).success).toBe(false);}});
+ it("requires Viral or Needs Work and actionable feedback",()=>{expect(viralReviewSchema.safeParse({...review,verdict:"Needs Work"}).success).toBe(true);expect(viralReviewSchema.safeParse({...review,verdict:"Guaranteed viral"}).success).toBe(false);expect(viralReviewSchema.safeParse({...review,feedback:[]}).success).toBe(false);});
+ it("requires saved video and AI review before approval",()=>{expect(canApproveClip({video_path:"clip.mp4",viral_review:review})).toBe(true);expect(canApproveClip({video_path:null,viral_review:review})).toBe(false);expect(canApproveClip({video_path:"clip.mp4",viral_review:null})).toBe(false);});
+ it("supports Hindi and English Edge voices",()=>{expect(voiceInputSchema.safeParse({text:"नमस्ते",voice:"hi-IN-SwaraNeural"}).success).toBe(true);expect(voiceInputSchema.safeParse({text:"Hello",voice:"en-US-JennyNeural"}).success).toBe(true);expect(voiceInputSchema.safeParse({text:"",voice:"en-US-JennyNeural"}).success).toBe(false);});
+});
