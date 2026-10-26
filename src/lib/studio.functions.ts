@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl } from "./studio-rules";
+import { canApproveClip, viralReviewSchema } from "./clip-review-rules";
 
 export const importYouTube = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({url:z.string().max(2000)}).parse(d)).handler(async({data,context})=>{
   const id = youtubeId(data.url);
@@ -43,10 +44,12 @@ export const removeCredential = createServerFn({method:"POST"}).middleware([requ
   if(error) throw new Error("Couldn't disconnect.");
   return {removed:true};
 });
-export const analyzeSource = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({sourceId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+export const analyzeSource = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({sourceId:z.string().uuid(),duration:z.number().min(20).max(86400).optional(),outline:z.string().max(6000).optional()}).parse(d)).handler(async({data,context})=>{
   const {data:source}=await context.supabase.from("studio_sources").select("*").eq("id",data.sourceId).single();
   if(!source) throw new Error("Video not found.");
-  const cues=z.array(cueSchema).min(1,"Import timed captions before analyzing.").parse(source.transcript);
+  const cues=z.array(cueSchema).parse(source.transcript);
+  const duration=source.duration||data.duration;
+  if(!cues.length&&!duration)throw new Error("Enter the video duration for structure-only suggestions, or add audio / a transcript.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
   if(!credential) throw new Error("Add your own AI key in Settings first.");
@@ -54,8 +57,8 @@ export const analyzeSource = createServerFn({method:"POST"}).middleware([require
   if(!secret) throw new Error("Secure key storage is not configured.");
   const {decrypt}=await import("./studio-crypto.server");
   const {analyzeWithKey}=await import("./studio-ai.server");
-  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url);
-  const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:s.title})));
+  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url,{title:source.title,duration:duration||Math.max(...cues.map(c=>c.end)),outline:data.outline||""});
+  const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:cues.filter(c=>c.end>s.start&&c.start<s.end).map(c=>c.text).join(" ").slice(0,2200)||s.title})));
   if(error) throw new Error(error.message);
   return {count:segments.length};
 });
@@ -63,7 +66,9 @@ export const addManualClip=createServerFn({method:"POST"}).middleware([requireSu
   const {data:s}=await context.supabase.from("studio_sources").select("duration").eq("id",data.sourceId).single();
   if(!s) throw new Error("Video not found.");
   if(s.duration && data.segment.end>s.duration) throw new Error("Clip exceeds the source duration.");
-  const {data:clip,error}=await context.supabase.from("studio_clips").insert({user_id:context.userId,source_id:data.sourceId,title:data.segment.title,start_seconds:data.segment.start,end_seconds:data.segment.end,score:0,reason:"Manually selected",caption:data.segment.title}).select("id").single();
+  const {data:source}=await context.supabase.from("studio_sources").select("transcript").eq("id",data.sourceId).single();
+  const caption=z.array(cueSchema).parse(source?.transcript||[]).filter(c=>c.end>data.segment.start&&c.start<data.segment.end).map(c=>c.text).join(" ").slice(0,2200)||data.segment.title;
+  const {data:clip,error}=await context.supabase.from("studio_clips").insert({user_id:context.userId,source_id:data.sourceId,title:data.segment.title,start_seconds:data.segment.start,end_seconds:data.segment.end,score:0,reason:"Manually selected",caption}).select("id").single();
   if(error) throw new Error(error.message);
   return clip;
 });
@@ -91,8 +96,9 @@ export const connectFacebook=createServerFn({method:"POST"}).middleware([require
   return {name:page.name};
 });
 export const publishStudioClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid(),platform:z.enum(["instagram","facebook"]),caption:z.string().max(2200),scheduledAt:z.string().datetime().nullable()}).parse(d)).handler(async({data,context})=>{
-  const {data:c}=await context.supabase.from("studio_clips").select("video_path").eq("id",data.clipId).single();
+  const {data:c}=await context.supabase.from("studio_clips").select("video_path,approved_at,caption,viral_review").eq("id",data.clipId).single();
   if(!c?.video_path) throw new Error("Export and save the clip first.");
+  if(!c.approved_at||!canApproveClip(c)||c.caption!==data.caption)throw new Error("Save your changes, review with AI, and approve this clip before posting.");
   if(data.scheduledAt && Date.parse(data.scheduledAt)<=Date.now()) throw new Error("Choose a future posting time.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:p,error}=await supabaseAdmin.from("studio_posts").insert({user_id:context.userId,clip_id:data.clipId,platform:data.platform,caption:data.caption,scheduled_at:data.scheduledAt || new Date().toISOString()}).select("*").single();
@@ -120,8 +126,9 @@ export const saveClipPlan=createServerFn({method:"POST"}).middleware([requireSup
   return {saved:true};
 });
 export const approveClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
-  const {data:c}=await context.supabase.from("studio_clips").select("video_path").eq("id",data.clipId).single();
+  const {data:c}=await context.supabase.from("studio_clips").select("video_path,viral_review").eq("id",data.clipId).single();
   if(!c?.video_path) throw new Error("Export and save the clip before approving.");
+  if(!canApproveClip(c))throw new Error("Run the AI viral review before approving this clip.");
   const {error}=await context.supabase.from("studio_clips").update({approved_at:new Date().toISOString()}).eq("id",data.clipId);
   if(error) throw new Error("Couldn't approve the clip.");
   return {approved:true};
@@ -130,18 +137,26 @@ export const generateClipText=createServerFn({method:"POST"}).middleware([requir
   const {data:clip}=await context.supabase.from("studio_clips").select("*,studio_sources(transcript)").eq("id",data.clipId).single();
   if(!clip) throw new Error("Clip not found.");
   const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript || []).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
-  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
-  const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
   let caption=clip.title,voiceover=cues.map(c=>c.text).join(" ").slice(0,1200);
-  if(credential){
-    const secret=process.env["STUDIO_ENCRYPTION_KEY"];
-    if(!secret) throw new Error("Secure key storage is not configured.");
-    const {decrypt}=await import("./studio-crypto.server");
-    const {writeClipText}=await import("./studio-ai.server");
-    ({caption,voiceover}=await writeClipText(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues));
-  }
+  caption=cues.map(c=>c.text).join(" ").slice(0,2200)||clip.title;
   if(!voiceover) voiceover=clip.title;
   const {error}=await context.supabase.from("studio_clips").update({caption,voiceover,approved_at:null}).eq("id",data.clipId);
   if(error) throw new Error("Couldn't save the generated text.");
   return {caption,voiceover};
+});
+
+export const reviewClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+  const {data:clip}=await context.supabase.from("studio_clips").select("*,studio_sources(transcript)").eq("id",data.clipId).single();
+  if(!clip)throw new Error("Clip not found.");
+  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
+  const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
+  if(!credential)throw new Error("Save your own AI endpoint, key and model in Settings before reviewing.");
+  const secret=process.env["STUDIO_ENCRYPTION_KEY"];if(!secret)throw new Error("Secure key storage is not configured.");
+  const {decrypt}=await import("./studio-crypto.server");const {reviewWithKey}=await import("./studio-ai.server");
+  const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript||[]).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
+  const review=viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues,clip.caption,clip.voiceover||"",clip.end_seconds-clip.start_seconds));
+  // Compare against the content reviewed; a simultaneous edit must not get a stale approval.
+  const update=await context.supabase.from("studio_clips").update({viral_review:review,approved_at:null}).eq("id",clip.id).eq("caption",clip.caption).eq("start_seconds",clip.start_seconds).eq("end_seconds",clip.end_seconds);
+  if(update.error)throw new Error("Couldn't save the critique.");
+  return review;
 });
