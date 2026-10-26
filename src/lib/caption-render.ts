@@ -18,7 +18,7 @@ export function makeAss(cues:Cue[],style:CaptionStyle) {
   }
   return header+rows.join("\n");
 }
-export async function renderClip(file:File,start:number,end:number,cues:Cue[],style:CaptionStyle,framing:"center"|"left"|"right",onProgress:(n:number)=>void) {
+export async function renderClip(file:File,start:number,end:number,cues:Cue[],style:CaptionStyle,framing:"center"|"left"|"right",onProgress:(n:number)=>void,voiceover?:File|null) {
   const {FFmpeg}=await import("@ffmpeg/ffmpeg");
   const {fetchFile,toBlobURL}=await import("@ffmpeg/util");
   const ffmpeg=new FFmpeg();
@@ -34,7 +34,12 @@ export async function renderClip(file:File,start:number,end:number,cues:Cue[],st
     await ffmpeg.writeFile("captions.ass",new TextEncoder().encode(makeAss(cues,style)));
     const x=framing==="left"?"0":framing==="right"?"iw-ow":"(iw-ow)/2";
     const filter=`scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280:${x}:(ih-oh)/2,setsar=1,ass=captions.ass:fontsdir=fonts`;
-    const code=await ffmpeg.exec(["-ss",String(start),"-i","input.mp4","-t",String(end-start),"-vf",filter,"-c:v","libx264","-preset","ultrafast","-crf","23","-c:a","aac","-movflags","+faststart","output.mp4"]);
+    const args=["-ss",String(start),"-i","input.mp4"];
+    if(voiceover){await ffmpeg.writeFile("voiceover",await fetchFile(voiceover));args.push("-i","voiceover");}
+    args.push("-t",String(end-start),"-vf",filter,"-c:v","libx264","-preset","ultrafast","-crf","23");
+    if(voiceover)args.push("-map","0:v","-map","1:a","-shortest");
+    args.push("-c:a","aac","-movflags","+faststart","output.mp4");
+    const code=await ffmpeg.exec(args);
     if(code!==0) throw new Error("Video export failed. Try a smaller MP4 source.");
     const bytes=await ffmpeg.readFile("output.mp4");
     if(typeof bytes==="string") throw new Error("Invalid video output.");

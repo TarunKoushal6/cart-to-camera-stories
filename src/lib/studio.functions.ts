@@ -114,3 +114,34 @@ export const refreshAnalytics=createServerFn({method:"POST"}).middleware([requir
   for(const post of posts || []) await refreshStudioMetrics(supabaseAdmin,post,process.env["STUDIO_ENCRYPTION_KEY"] || "");
   return {refreshed:posts?.length || 0};
 });
+export const saveClipPlan=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid(),caption:z.string().max(2200),voiceover:z.string().max(4000)}).parse(d)).handler(async({data,context})=>{
+  const {error}=await context.supabase.from("studio_clips").update({caption:data.caption,voiceover:data.voiceover,approved_at:null}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't save the clip plan.");
+  return {saved:true};
+});
+export const approveClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+  const {data:c}=await context.supabase.from("studio_clips").select("video_path").eq("id",data.clipId).single();
+  if(!c?.video_path) throw new Error("Export and save the clip before approving.");
+  const {error}=await context.supabase.from("studio_clips").update({approved_at:new Date().toISOString()}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't approve the clip.");
+  return {approved:true};
+});
+export const generateClipText=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
+  const {data:clip}=await context.supabase.from("studio_clips").select("*,studio_sources(transcript)").eq("id",data.clipId).single();
+  if(!clip) throw new Error("Clip not found.");
+  const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript || []).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
+  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
+  const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
+  let caption=clip.title,voiceover=cues.map(c=>c.text).join(" ").slice(0,1200);
+  if(credential){
+    const secret=process.env["STUDIO_ENCRYPTION_KEY"];
+    if(!secret) throw new Error("Secure key storage is not configured.");
+    const {decrypt}=await import("./studio-crypto.server");
+    const {writeClipText}=await import("./studio-ai.server");
+    ({caption,voiceover}=await writeClipText(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues));
+  }
+  if(!voiceover) voiceover=clip.title;
+  const {error}=await context.supabase.from("studio_clips").update({caption,voiceover,approved_at:null}).eq("id",data.clipId);
+  if(error) throw new Error("Couldn't save the generated text.");
+  return {caption,voiceover};
+});
