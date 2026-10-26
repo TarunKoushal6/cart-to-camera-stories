@@ -206,6 +206,7 @@ export type Database = {
           title: string
           user_id: string
           video_path: string | null
+          viral_review: Json | null
           voiceover: string | null
         }
         Insert: {
@@ -221,6 +222,7 @@ export type Database = {
           title: string
           user_id: string
           video_path?: string | null
+          viral_review?: Json | null
           voiceover?: string | null
         }
         Update: {
@@ -236,6 +238,7 @@ export type Database = {
           title?: string
           user_id?: string
           video_path?: string | null
+          viral_review?: Json | null
           voiceover?: string | null
         }
         Relationships: [
