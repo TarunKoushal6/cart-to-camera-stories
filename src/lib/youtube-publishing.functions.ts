@@ -49,7 +49,7 @@ export const publishYouTubeClip=createServerFn({method:"POST"}).middleware([requ
     const location=session.headers.get("location");if(!location)throw new Error("YouTube did not start an upload.");
     const target=new URL(location);if(target.protocol!=="https:"||target.hostname!=="www.googleapis.com")throw new Error("Invalid YouTube upload destination.");
     // Stream the private saved clip; never buffer a large video in the Worker.
-    const result=await googleJson<{id:string}>(await fetch(target,{method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"video/mp4","Content-Length":String(size)},body:video.body,signal:AbortSignal.timeout(120000)}));
+    const result=await googleJson<{id:string}>(await fetch(target,{method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"video/mp4","Content-Length":String(size),"Content-Range":`bytes 0-${size-1}/${size}`},body:video.body,signal:AbortSignal.timeout(120000)}));
     if(!result.id)throw new Error("YouTube returned no video ID.");
     const updated=await context.supabase.from("youtube_posts").update({media_id:result.id,error:null}).eq("id",post.id);if(updated.error)throw new Error("Video uploaded but its status could not be saved. Check your YouTube channel before retrying.");
     return {id:post.id};

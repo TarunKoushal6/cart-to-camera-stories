@@ -1,4 +1,5 @@
-- [ ] Add YouTube account connection, Shorts upload/scheduling metadata and YouTube social metrics — awaiting approval of custom Google OAuth setup.
+- [x] Add custom Google OAuth, YouTube upload/scheduling metadata, processing polling and views/likes/comments.
+- [ ] Verify live Google consent, Shorts uploads, scheduled release and YouTube counts — Google OAuth credentials were skipped; requires credentials and a connected channel.
 - [x] Pivot intake to YouTube metadata and free captions with transcript fallback.
 - [x] Add encrypted personal provider settings and 20–30 second segment analysis.
 - [x] Add local vertical cropping and burned-in karaoke captions.
