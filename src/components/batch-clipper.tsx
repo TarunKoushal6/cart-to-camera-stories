@@ -23,7 +23,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
   const pending = clips.filter(c => c.video_path && c.viral_review && !c.approved_at);
 
   async function runBatch() {
-    if (!file) return toast.error("Choose the source video file first.");
+    if (!file) { toast.error("Choose the source video file first."); return; }
     setBusy(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
