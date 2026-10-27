@@ -31,8 +31,9 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
       const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing" }).eq("id", job.id).eq("status", "transcribing").select("id").maybeSingle();
       if (!claim.data) return { status: job.status };
       try {
-        await context.supabase.from("studio_sources").update({ transcript: state.cues.map(c => ({ ...c })), transcript_status: "imported", duration: state.duration }).eq("id", job.source_id);
-        const { data: source } = await context.supabase.from("studio_sources").select("title").eq("id", job.source_id).single();
+        const transcriptSave = await context.supabase.from("studio_sources").update({ transcript: state.cues.map(c => ({ ...c })), transcript_status: "imported", duration: state.duration }).eq("id", job.source_id).eq("user_id", context.userId);
+        if (transcriptSave.error) throw new Error("Couldn't save transcript.");
+        const { data: source } = await context.supabase.from("studio_sources").select("title").eq("id", job.source_id).eq("user_id", context.userId).single();
         const { analyzeWithKey } = await import("./studio-ai.server");
         const segments = await analyzeWithKey(z.enum(providers).parse(ai.provider), ai.model, await decrypt(ai.encrypted_key, secret), state.cues, ai.base_url,
           { title: source?.title || "YouTube video", duration: state.duration, outline: "" });
@@ -59,13 +60,17 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
       const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing" }).eq("id", job.id).eq("status", "rendering").select("id").maybeSingle();
       if (!claim.data) return { status: job.status };
       try {
-        const { data: source } = await context.supabase.from("studio_sources").select("transcript").eq("id", job.source_id).single();
+        const { data: source } = await context.supabase.from("studio_sources").select("transcript").eq("id", job.source_id).eq("user_id", context.userId).single();
         const { cueSchema } = await import("./studio-rules");
         const cues = z.array(cueSchema).parse(source?.transcript || []);
         const { reviewWithKey } = await import("./studio-ai.server");
         const { viralReviewSchema } = await import("./clip-review-rules");
         const key = await decrypt(ai.encrypted_key, secret);
-        for (const t of targets) {
+        const current = await context.supabase.from("studio_clips").select("id,video_path,viral_review").eq("source_id", job.source_id).eq("user_id", context.userId);
+        if (current.error) throw new Error("Couldn't load staged clips.");
+        const remaining = targets.filter(t => !current.data.some(c => c.id === t.id && c.video_path === t.path && viralReviewSchema.safeParse(c.viral_review).success));
+        // One AI review per tick keeps cloud requests bounded even for a 15-clip batch.
+        for (const t of remaining.slice(0, 1)) {
           if (!state.completed?.includes(t.id)) throw new Error("Worker did not finish every clip.");
           const folder = t.path.slice(0, t.path.lastIndexOf("/"));
           const name = t.path.slice(t.path.lastIndexOf("/") + 1);
@@ -73,15 +78,18 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           const file = files.data?.find(f => f.name === name);
           if (files.error || !file || file.metadata?.mimetype !== "video/mp4" || !file.metadata?.size || file.metadata.size > 50 * 1024 * 1024) throw new Error("Worker upload is missing or exceeds 50 MB.");
           // Attaching the video first invalidates any stale review through the existing DB trigger.
-          const attached = await context.supabase.from("studio_clips").update({ video_path: t.path, approved_at: null }).eq("id", t.id).select("caption").single();
+          const attached = await context.supabase.from("studio_clips").update({ video_path: t.path, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).select("caption,voiceover,start_seconds,end_seconds").single();
           if (attached.error || !attached.data) throw new Error("Couldn't attach saved clip.");
           const review = viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(ai.provider), ai.model, key, ai.base_url,
             t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, "", t.segment.end - t.segment.start));
-          const saved = await context.supabase.from("studio_clips").update({ viral_review: review, approved_at: null }).eq("id", t.id).eq("caption", attached.data.caption).eq("video_path", t.path);
-          if (saved.error) throw new Error("Couldn't save AI review.");
+          let saveReview = context.supabase.from("studio_clips").update({ viral_review: review, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).eq("caption", attached.data.caption).eq("video_path", t.path).eq("start_seconds", attached.data.start_seconds).eq("end_seconds", attached.data.end_seconds);
+          saveReview = attached.data.voiceover === null ? saveReview.is("voiceover", null) : saveReview.eq("voiceover", attached.data.voiceover);
+          const saved = await saveReview.select("id").maybeSingle();
+          if (saved.error || !saved.data) throw new Error("Clip changed during AI review. Run a fresh review.");
         }
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "ready" }).eq("id", job.id);
-        return { status: "ready" };
+        const nextStatus = remaining.length <= 1 ? "ready" : "rendering";
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus }).eq("id", job.id);
+        return { status: nextStatus };
       } catch (e) {
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Some clips could not be verified or AI-reviewed. Saved clips remain in your library for review." }).eq("id", job.id);
         throw e;
