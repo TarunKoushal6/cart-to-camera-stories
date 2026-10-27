@@ -1,4 +1,4 @@
-- [ ] Compare OpenShorts with Cutline, close cloud job integration gaps, document deployment limits, and verify approval-gated next-day scheduling and preview build.
+- [x] Compare pinned OpenShorts source, add optional Python bridge/full-image deployment, health-check compatibility, recover leased interrupted jobs, and preserve approval with retryable next-day batches; 19 app tests and 2 worker tests pass, signed-in setup/download checks pass, preview build OK.
 - [x] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files; signed-in settings/downloads and missing-connection checks passed, plus a 25s vertical-caption render and 9 tests.
 - [ ] Verify live cloud YouTube download → personal-AI selection → worker render/upload → approval/scheduling — requires a deployed compatible worker, saved personal AI key and connected publishing accounts.
 - [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.

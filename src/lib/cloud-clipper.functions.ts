@@ -42,7 +42,9 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
       if (!source || source.youtube_id !== youtube) throw new Error("Source video not found.");
     } else {
       const { fetchYouTube } = await import("./youtube.server");
-      const video = await fetchYouTube(youtube);
+      // Metadata/caption blocking must not prevent the worker's independent downloader.
+      const video = await fetchYouTube(youtube).catch(() => ({ title: `YouTube video ${youtube}`, author: "", thumbnail_url: null,
+        duration: null, transcript: [], transcript_status: "unavailable" }));
       const { data: source, error } = await context.supabase.from("studio_sources").insert({ ...video,
         transcript: video.transcript.map(c => ({ ...c })), youtube_id: youtube,
         url: `https://www.youtube.com/watch?v=${youtube}`, user_id: context.userId,
