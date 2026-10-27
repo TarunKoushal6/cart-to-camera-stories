@@ -1,4 +1,5 @@
-- [ ] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files.
+- [x] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files; signed-in settings/downloads and missing-connection checks passed, plus a 25s vertical-caption render and 9 tests.
+- [ ] Verify live cloud YouTube download → personal-AI selection → worker render/upload → approval/scheduling — requires a deployed compatible worker, saved personal AI key and connected publishing accounts.
 - [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
