@@ -1,4 +1,5 @@
-- [x] (browser batch) Automate video-link intake → multiple relevant source clips → cloud MP4s → next-day scheduling, without voiceover or per-clip manual work — blocked on choosing and connecting a hosted source-download/rendering service. Vizard documents YouTube intake, multiple 9:16 clip downloads and caption templates; API access requires a paid plan. Current intake fetches metadata/captions only, and rendering requires a browser-supplied MP4.
+- [ ] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files.
+- [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
 - [x] Disable email verification on signup (auto-confirm); credentials stay encrypted per user in the cloud.
