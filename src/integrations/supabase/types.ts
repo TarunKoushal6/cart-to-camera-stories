@@ -257,6 +257,8 @@ export type Database = {
           created_at: string
           error: string | null
           id: string
+          processing_token: string | null
+          processing_until: string | null
           source_id: string
           status: string
           user_id: string
@@ -268,6 +270,8 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          processing_token?: string | null
+          processing_until?: string | null
           source_id: string
           status?: string
           user_id: string
@@ -279,6 +283,8 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          processing_token?: string | null
+          processing_until?: string | null
           source_id?: string
           status?: string
           user_id?: string
@@ -556,7 +562,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_cloud_job: {
+        Args: { _job_id: string; _owner_id: string; _token: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
