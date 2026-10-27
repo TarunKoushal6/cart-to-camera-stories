@@ -28,6 +28,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
     try {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) throw new Error("Sign in first.");
+      const ownerId = auth.user.id;
       if (!clips.length) { setStatus("Finding viral moments…"); await analyze({ data: { sourceId } }); }
       const r = await supabase.from("studio_clips").select("*").eq("source_id", sourceId).order("score", { ascending: false });
       if (r.error) throw r.error;
@@ -35,7 +36,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
       const { renderClip } = await import("@/lib/caption-render");
       for (const [i, c] of todo.entries()) {
         await renderClip(file, c.start_seconds, c.end_seconds, clipCues(cues, c.start_seconds, c.end_seconds), "karaoke", "center", n => setStatus(`Rendering ${i + 1}/${todo.length} · ${n}%`)).then(async out => {
-          const path = `${auth.user!.id}/clips/${c.id}/${crypto.randomUUID()}.mp4`;
+          const path = `${ownerId}/clips/${c.id}/${crypto.randomUUID()}.mp4`;
           setStatus(`Saving ${i + 1}/${todo.length}…`);
           const up = await supabase.storage.from("videos").upload(path, out, { contentType: "video/mp4" });
           if (up.error) throw up.error;
@@ -55,9 +56,11 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
     try {
       const slots = nextDaySlots(ids.length);
       for (const [i, id] of ids.entries()) {
-        const c = clips.find(x => x.id === id)!;
+        const c = clips.find(x => x.id === id);
+        const slot = slots[i];
+        if (!c || !slot) throw new Error("Clip no longer available. Refresh and select again.");
         await approve({ data: { clipId: id } });
-        await publish({ data: { clipId: id, platform, caption: c.caption, scheduledAt: slots[i]!.toISOString() } });
+        await publish({ data: { clipId: id, platform, caption: c.caption, scheduledAt: slot.toISOString() } });
       }
       toast.success(`${ids.length} clip(s) scheduled for tomorrow from 10:00`);
       setPicked([]);

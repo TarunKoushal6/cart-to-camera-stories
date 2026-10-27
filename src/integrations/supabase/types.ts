@@ -251,6 +251,50 @@ export type Database = {
           },
         ]
       }
+      studio_cloud_jobs: {
+        Row: {
+          clips: Json
+          created_at: string
+          error: string | null
+          id: string
+          source_id: string
+          status: string
+          user_id: string
+          worker_job_id: string
+          worker_url: string
+        }
+        Insert: {
+          clips?: Json
+          created_at?: string
+          error?: string | null
+          id?: string
+          source_id: string
+          status?: string
+          user_id: string
+          worker_job_id: string
+          worker_url: string
+        }
+        Update: {
+          clips?: Json
+          created_at?: string
+          error?: string | null
+          id?: string
+          source_id?: string
+          status?: string
+          user_id?: string
+          worker_job_id?: string
+          worker_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_cloud_jobs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "studio_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       studio_credentials: {
         Row: {
           account_id: string

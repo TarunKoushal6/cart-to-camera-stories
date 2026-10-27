@@ -43,6 +43,13 @@
       "when": 1793003929286,
       "tag": "0005_clip_viral_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793093839287,
+      "tag": "0006_cloud_clipping_jobs",
+      "breakpoints": true
     }
   ]
 }

@@ -30,3 +30,4 @@
 - Caption text comes from free transcript windows and transcription runs in a browser Whisper worker; missing transcripts use explicitly provisional outline-based analysis — avoids transcription credit charges and pretending AI watched footage.
 - Edge speech uses an authenticated server wrapper and Worker WebSocket upgrade with the current consumer token protocol; never silently fall back to paid speech — keeps generation key-free and makes service unavailability explicit.
 - Batch clipping runs in the browser (FFmpeg WASM) per source file, then AI-reviews; approving schedules next-day slots — the Worker cannot render video.
+- Cloud clipping uses a self-hosted Cutline FastAPI protocol, owner-bound persisted jobs and exact-object signed uploads; personal AI stays in the app and manual approval gates scheduling. Protected schedule ticks and authenticated refreshes call the same server-only job helper so browser closure does not halt cloud processing.
