@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/public/jobs/publish-due")({
         for(const post of youtubeDue||[]){await pollYouTubePost(supabaseAdmin,post);n++;}
         const { advanceCloudCut } = await import("@/lib/cloud-clipper-jobs.server");
         const { data: cloudJobs } = await supabaseAdmin.from("studio_cloud_jobs").select("id,user_id")
-          .in("status", ["transcribing", "rendering"]).order("created_at").limit(2);
+          .in("status", ["transcribing", "analyzing", "rendering", "finalizing"]).order("created_at").limit(2);
         for (const job of cloudJobs || []) {
           try { await advanceCloudCut({ jobId: job.id }, { supabase: supabaseAdmin, userId: job.user_id }); n++; }
           catch { /* Transient worker/network errors retry on the next protected schedule tick. */ }

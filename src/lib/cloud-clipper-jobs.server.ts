@@ -12,6 +12,11 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) throw new Error("Secure credential storage is not configured.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const leaseToken = crypto.randomUUID();
+    const claimLease = await supabaseAdmin.rpc("claim_cloud_job", { _job_id: job.id, _owner_id: context.userId, _token: leaseToken });
+    if (claimLease.error) throw new Error("Couldn't claim cloud job.");
+    if (!claimLease.data) return { status: job.status };
+    try {
     const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
     const worker = settings?.find(s => s.kind === "cloud_worker");
     const ai = settings?.find(s => s.kind === "ai");
@@ -21,26 +26,30 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     const token = await decrypt(worker.encrypted_key, secret);
     const state = workerStatusSchema.parse(await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}`));
     if (state.status === "failed") {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory." }).eq("id", job.id);
+      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: state.error || "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory." }).eq("id", job.id);
       return { status: "failed" };
     }
     let targets = z.array(cloudTargetSchema.omit({ upload_url: true })).parse(job.clips);
-    if (state.status === "analyzed" && !targets.length) {
+    if (state.status === "analyzed") {
       if (!state.cues?.length || !state.duration) throw new Error("Worker returned no timed transcript.");
       // Claim once; concurrent browser polls must not create duplicate clips.
-      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing" }).eq("id", job.id).eq("status", "transcribing").select("id").maybeSingle();
+      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing" }).eq("id", job.id).in("status", ["transcribing", "analyzing", "rendering"]).select("id").maybeSingle();
       if (!claim.data) return { status: job.status };
       try {
         const transcriptSave = await context.supabase.from("studio_sources").update({ transcript: state.cues.map(c => ({ ...c })), transcript_status: "imported", duration: state.duration }).eq("id", job.source_id).eq("user_id", context.userId);
         if (transcriptSave.error) throw new Error("Couldn't save transcript.");
         const { data: source } = await context.supabase.from("studio_sources").select("title").eq("id", job.source_id).eq("user_id", context.userId).single();
+        if (!targets.length) {
         const { analyzeWithKey } = await import("./studio-ai.server");
         const segments = await analyzeWithKey(z.enum(providers).parse(ai.provider), ai.model, await decrypt(ai.encrypted_key, secret), state.cues, ai.base_url,
           { title: source?.title || "YouTube video", duration: state.duration, outline: "" });
         targets = segments.map(segment => { const id = crypto.randomUUID(); return { id, segment, path: `${context.userId}/clips/${id}/${job.id}.mp4` }; });
-        const { error } = await context.supabase.from("studio_clips").insert(targets.map(t => ({ id: t.id, source_id: job.source_id, user_id: context.userId,
+        const persisted = await supabaseAdmin.from("studio_cloud_jobs").update({ clips: targets.map(t => ({ ...t })) }).eq("id", job.id);
+        if (persisted.error) throw new Error("Couldn't persist render targets.");
+        }
+        const { error } = await context.supabase.from("studio_clips").upsert(targets.map(t => ({ id: t.id, source_id: job.source_id, user_id: context.userId,
           start_seconds: t.segment.start, end_seconds: t.segment.end, title: t.segment.title, score: t.segment.score, reason: t.segment.reason,
-          caption: state.cues?.filter(c => c.end > t.segment.start && c.start < t.segment.end).map(c => c.text).join(" ").slice(0, 2200) || t.segment.title })));
+          caption: state.cues?.filter(c => c.end > t.segment.start && c.start < t.segment.end).map(c => c.text).join(" ").slice(0, 2200) || t.segment.title })), { onConflict: "id", ignoreDuplicates: true });
         if (error) throw new Error("Couldn't stage clips.");
         const uploads = [];
         for (const t of targets) {
@@ -48,16 +57,16 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           if (upload.error || !upload.data) throw new Error("Couldn't authorize clip upload.");
           uploads.push({ ...t, upload_url: upload.data.signedUrl });
         }
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", clips: targets.map(t => ({ ...t })) }).eq("id", job.id);
         await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads });
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id);
         return { status: "rendering" };
       } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Analysis or render handoff failed. Check AI settings and worker logs, then retry." }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing", error: "Analysis or render handoff interrupted; retrying. Check AI settings and worker availability if this persists." }).eq("id", job.id);
         throw e;
       }
     }
     if (state.status === "complete" && targets.length) {
-      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing" }).eq("id", job.id).eq("status", "rendering").select("id").maybeSingle();
+      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing" }).eq("id", job.id).in("status", ["rendering", "analyzing", "finalizing"]).select("id").maybeSingle();
       if (!claim.data) return { status: job.status };
       try {
         const { data: source } = await context.supabase.from("studio_sources").select("transcript").eq("id", job.source_id).eq("user_id", context.userId).single();
@@ -88,12 +97,15 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           if (saved.error || !saved.data) throw new Error("Clip changed during AI review. Run a fresh review.");
         }
         const nextStatus = remaining.length <= 1 ? "ready" : "rendering";
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error: null }).eq("id", job.id);
         return { status: nextStatus };
       } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Some clips could not be verified or AI-reviewed. Saved clips remain in your library for review." }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing", error: "Verification or AI review interrupted; retrying. Saved clips remain in your library." }).eq("id", job.id);
         throw e;
       }
     }
     return { status: job.status };
+    } finally {
+      await supabaseAdmin.from("studio_cloud_jobs").update({ processing_token: null, processing_until: null }).eq("id", job.id).eq("processing_token", leaseToken);
+    }
 }
