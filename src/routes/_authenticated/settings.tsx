@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { YouTubeConnection } from "@/components/youtube-connection";
 import { Link } from "@tanstack/react-router";
 import { Input } from "@/components/ui/input";
+import { CloudWorkerSettings } from "@/components/cloud-worker-settings";
 export const Route=createFileRoute("/_authenticated/settings")({head:()=>studioHead("Settings","Personal AI keys, custom endpoints and YouTube channel connections."),component:Settings});
 const defaults:Record<Provider,string>={openai:"gpt-4.1-mini",gemini:"gemini-2.5-flash",openrouter:"openai/gpt-4.1-mini",anthropic:"claude-sonnet-4-5",custom:""};
 const labels:Record<Provider,string>={openai:"OpenAI",gemini:"Gemini",openrouter:"OpenRouter",anthropic:"Anthropic",custom:"Custom endpoint"};
@@ -23,7 +24,8 @@ function Settings(){
     try{
       const r=await scan({data:{provider,key,baseUrl:provider==="custom"?baseUrl:null}});
       setModels(r.models);
-      if(r.models.length&&!r.models.includes(model))setModel(r.models[0]!);
+      const firstModel=r.models[0];
+      if(firstModel&&!r.models.includes(model))setModel(firstModel);
       toast.success(`${r.models.length} models found`);
     }catch(e){setModels([]);toast.error(e instanceof Error?e.message:"Couldn't list models");}
     finally{setScanning(false);}

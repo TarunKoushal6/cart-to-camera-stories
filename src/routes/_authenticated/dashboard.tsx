@@ -10,6 +10,7 @@ import { studioHead } from "@/lib/studio-rules";
 import { StudioSource } from "@/components/studio-source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CloudCutButton } from "@/components/cloud-cut-button";
 export const Route=createFileRoute("/_authenticated/dashboard")({head:()=>studioHead("Studio","Repurpose YouTube videos into captioned vertical shorts."),component:Dashboard});
 function Dashboard(){
  const qc=useQueryClient(),add=useServerFn(importYouTube);
