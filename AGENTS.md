@@ -29,3 +29,4 @@
 - Clips require a persisted personal-AI critique and owner approval before publishing; edits invalidate both and database triggers gate Meta and YouTube queues — guarantees nothing posts without explicit consent.
 - Caption text comes from free transcript windows and transcription runs in a browser Whisper worker; missing transcripts use explicitly provisional outline-based analysis — avoids transcription credit charges and pretending AI watched footage.
 - Edge speech uses an authenticated server wrapper and Worker WebSocket upgrade with the current consumer token protocol; never silently fall back to paid speech — keeps generation key-free and makes service unavailability explicit.
+- Batch clipping runs in the browser (FFmpeg WASM) per source file, then AI-reviews; approving schedules next-day slots — the Worker cannot render video.
