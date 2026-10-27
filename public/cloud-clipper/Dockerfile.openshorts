@@ -1,0 +1,11 @@
+# First build openshorts-base from the pinned upstream checkout, as in README.md.
+FROM openshorts-base:cutline-pinned
+USER root
+RUN mkdir -p /app/cutline-worker && chown appuser:appuser /app/cutline-worker
+COPY --chown=appuser:appuser app.py openshorts_adapter.py /app/cutline-worker/
+USER appuser
+WORKDIR /app/cutline-worker
+ENV PYTHONPATH=/app CLIPPER_ENGINE=openshorts DATA_DIR=/tmp/cutline
+EXPOSE 7860
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -sf http://127.0.0.1:7860/health > /dev/null || exit 1
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--no-access-log"]
