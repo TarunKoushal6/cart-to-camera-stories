@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { cloudTargetSchema, workerStatusSchema, workerUrl } from "./cloud-clipper-rules";
-import { providers, youtubeId } from "./studio-rules";
+import { workerUrl } from "./cloud-clipper-rules";
+import { youtubeId } from "./studio-rules";
 
 export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ url: z.string().max(500), token: z.string().max(3000).optional() }).parse(d))
@@ -68,86 +68,6 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
 export const pollCloudCut = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ jobId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: job } = await context.supabase.from("studio_cloud_jobs").select("*").eq("id", data.jobId).single();
-    if (!job) throw new Error("Clipping job not found.");
-    if (job.status === "ready" || job.status === "failed") return { status: job.status };
-    const secret = process.env["STUDIO_ENCRYPTION_KEY"];
-    if (!secret) throw new Error("Secure credential storage is not configured.");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
-    const worker = settings?.find(s => s.kind === "cloud_worker");
-    const ai = settings?.find(s => s.kind === "ai");
-    if (!worker || worker.base_url !== job.worker_url || !ai) throw new Error("Restore the worker and AI settings used for this job.");
-    const { decrypt } = await import("./studio-crypto.server");
-    const { callWorker } = await import("./cloud-clipper.server");
-    const token = await decrypt(worker.encrypted_key, secret);
-    const state = workerStatusSchema.parse(await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}`));
-    if (state.status === "failed") {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory." }).eq("id", job.id);
-      return { status: "failed" };
-    }
-    let targets = z.array(cloudTargetSchema.omit({ upload_url: true })).parse(job.clips);
-    if (state.status === "analyzed" && !targets.length) {
-      if (!state.cues?.length || !state.duration) throw new Error("Worker returned no timed transcript.");
-      // Claim once; concurrent browser polls must not create duplicate clips.
-      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing" }).eq("id", job.id).eq("status", "transcribing").select("id").maybeSingle();
-      if (!claim.data) return { status: job.status };
-      try {
-        await context.supabase.from("studio_sources").update({ transcript: state.cues.map(c => ({ ...c })), transcript_status: "imported", duration: state.duration }).eq("id", job.source_id);
-        const { data: source } = await context.supabase.from("studio_sources").select("title").eq("id", job.source_id).single();
-        const { analyzeWithKey } = await import("./studio-ai.server");
-        const segments = await analyzeWithKey(z.enum(providers).parse(ai.provider), ai.model, await decrypt(ai.encrypted_key, secret), state.cues, ai.base_url,
-          { title: source?.title || "YouTube video", duration: state.duration, outline: "" });
-        targets = segments.map(segment => { const id = crypto.randomUUID(); return { id, segment, path: `${context.userId}/clips/${id}/${job.id}.mp4` }; });
-        const { error } = await context.supabase.from("studio_clips").insert(targets.map(t => ({ id: t.id, source_id: job.source_id, user_id: context.userId,
-          start_seconds: t.segment.start, end_seconds: t.segment.end, title: t.segment.title, score: t.segment.score, reason: t.segment.reason,
-          caption: state.cues?.filter(c => c.end > t.segment.start && c.start < t.segment.end).map(c => c.text).join(" ").slice(0, 2200) || t.segment.title })));
-        if (error) throw new Error("Couldn't stage clips.");
-        const uploads = [];
-        for (const t of targets) {
-          const upload = await supabaseAdmin.storage.from("videos").createSignedUploadUrl(t.path);
-          if (upload.error || !upload.data) throw new Error("Couldn't authorize clip upload.");
-          uploads.push({ ...t, upload_url: upload.data.signedUrl });
-        }
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", clips: targets.map(t => ({ ...t })) }).eq("id", job.id);
-        await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads });
-        return { status: "rendering" };
-      } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Analysis or render handoff failed. Check AI settings and worker logs, then retry." }).eq("id", job.id);
-        throw e;
-      }
-    }
-    if (state.status === "complete" && targets.length) {
-      const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing" }).eq("id", job.id).eq("status", "rendering").select("id").maybeSingle();
-      if (!claim.data) return { status: job.status };
-      try {
-        const { data: source } = await context.supabase.from("studio_sources").select("transcript").eq("id", job.source_id).single();
-        const { cueSchema } = await import("./studio-rules");
-        const cues = z.array(cueSchema).parse(source?.transcript || []);
-        const { reviewWithKey } = await import("./studio-ai.server");
-        const { viralReviewSchema } = await import("./clip-review-rules");
-        const key = await decrypt(ai.encrypted_key, secret);
-        for (const t of targets) {
-          if (!state.completed?.includes(t.id)) throw new Error("Worker did not finish every clip.");
-          const folder = t.path.slice(0, t.path.lastIndexOf("/"));
-          const name = t.path.slice(t.path.lastIndexOf("/") + 1);
-          const files = await supabaseAdmin.storage.from("videos").list(folder, { search: name });
-          const file = files.data?.find(f => f.name === name);
-          if (files.error || !file || file.metadata?.mimetype !== "video/mp4" || !file.metadata?.size || file.metadata.size > 50 * 1024 * 1024) throw new Error("Worker upload is missing or exceeds 50 MB.");
-          // Attaching the video first invalidates any stale review through the existing DB trigger.
-          const attached = await context.supabase.from("studio_clips").update({ video_path: t.path, approved_at: null }).eq("id", t.id).select("caption").single();
-          if (attached.error || !attached.data) throw new Error("Couldn't attach saved clip.");
-          const review = viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(ai.provider), ai.model, key, ai.base_url,
-            t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, "", t.segment.end - t.segment.start));
-          const saved = await context.supabase.from("studio_clips").update({ viral_review: review, approved_at: null }).eq("id", t.id).eq("caption", attached.data.caption).eq("video_path", t.path);
-          if (saved.error) throw new Error("Couldn't save AI review.");
-        }
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "ready" }).eq("id", job.id);
-        return { status: "ready" };
-      } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Some clips could not be verified or AI-reviewed. Saved clips remain in your library for review." }).eq("id", job.id);
-        throw e;
-      }
-    }
-    return { status: job.status };
+    const { advanceCloudCut } = await import("./cloud-clipper-jobs.server");
+    return advanceCloudCut(data, context);
   });
