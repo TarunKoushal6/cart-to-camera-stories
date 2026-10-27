@@ -7,10 +7,10 @@ function query(table: string) {
   let update: Record<string, unknown> | undefined;
   const q: Record<string, unknown> = {};
   for (const method of ["select","eq","in","is"]) q[method] = () => q;
-  q.update = (data: Record<string, unknown>) => { update = data; state.updates.push(data); return q; };
+  q['update'] = (data: Record<string, unknown>) => { update = data; state.updates.push(data); return q; };
   const result = () => {
     if (update) {
-      if (update.viral_review) state.reviewed = true;
+      if (update['viral_review']) state.reviewed = true;
       return {data:{id,caption:"Hello",voiceover:null,start_seconds:0,end_seconds:25},error:null};
     }
     if (table === "studio_cloud_jobs") return {data:{id,source_id:id,user_id:"owner",status:state.status,worker_url:"https://worker.example.com",worker_job_id:id,clips:[{id,path,segment:{title:"Moment",start:0,end:25,score:80,reason:"Hook"}}]},error:null};
@@ -18,8 +18,8 @@ function query(table: string) {
     if (table === "studio_sources") return {data:{transcript:[{start:0,end:25,text:"Hello"}]},error:null};
     return {data:[{id,video_path:state.reviewed?path:null,viral_review:state.reviewed?critique:null}],error:null};
   };
-  q.single = q.maybeSingle = async () => result();
-  q.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve);
+  q['single'] = q['maybeSingle'] = async () => result();
+  q['then'] = (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve);
   return q;
 }
 const db = {from:query,rpc:async()=>({data:state.leased,error:null}),storage:{from:()=>({list:async()=>({data:[{name:"job.mp4",metadata:{mimetype:"video/mp4",size:1000}}],error:null})})}};
@@ -33,8 +33,8 @@ it("resumes interrupted finalization, attaches the exact MP4 and reviews without
   const result=await advanceCloudCut({jobId:id}, {supabase:db as never,userId:"owner"});
   expect(result.status).toBe("ready");
   expect(state.updates).toContainEqual({video_path:path,approved_at:null});
-  expect(state.updates.some(u=>u.viral_review&&u.approved_at===null)).toBe(true);
-  expect(state.updates.some(u=>typeof u.approved_at==="string")).toBe(false);
+  expect(state.updates.some(u=>u['viral_review']&&u['approved_at']===null)).toBe(true);
+  expect(state.updates.some(u=>typeof u['approved_at']==="string")).toBe(false);
   expect(state.updates.at(-1)).toEqual({processing_token:null,processing_until:null});
 });
 it("does not process a job already held by another poll",async()=>{
