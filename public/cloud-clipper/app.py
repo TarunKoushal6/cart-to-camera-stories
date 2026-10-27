@@ -18,6 +18,9 @@ POOL = ThreadPoolExecutor(max_workers=1)
 LOCK = threading.Lock()
 MODEL_LOCK = threading.Lock()
 MODEL = None
+ENGINE = os.getenv('CLIPPER_ENGINE', 'cutline')
+if ENGINE not in ('cutline', 'openshorts'):
+    raise RuntimeError('CLIPPER_ENGINE must be cutline or openshorts')
 app = FastAPI(title='Cutline Cloud Clipper', version='1.0')
 
 def authorized(c: HTTPAuthorizationCredentials | None = Depends(AUTH)):
@@ -68,31 +71,43 @@ def run(args, timeout=7200):
 def download(job, url):
     try:
         d = folder(job)
-        run(['yt-dlp', '--no-playlist', '--max-filesize', '2G', '--match-filter', 'duration <= 7200',
-             '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]', '--merge-output-format', 'mp4',
-             '-o', str(d / 'source.%(ext)s'), url])
-        files = list(d.glob('source.*'))
-        source = next((p for p in files if p.suffix in ['.mp4', '.webm', '.mkv']), None)
+        if ENGINE == 'openshorts':
+            from openshorts_adapter import download_source
+            source = download_source(url, d)
+        else:
+            cookie_file = os.getenv('YOUTUBE_COOKIES_FILE', '')
+            extra = ['--cookies', cookie_file] if cookie_file else []
+            run(['yt-dlp', '--no-playlist', '--max-filesize', '2G', '--match-filter', 'duration <= 7200',
+                 '--js-runtimes', 'deno', *extra,
+                 '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]', '--merge-output-format', 'mp4',
+                 '-o', str(d / 'source.%(ext)s'), url])
+            files = list(d.glob('source.*'))
+            source = next((p for p in files if p.suffix in ['.mp4', '.webm', '.mkv']), None)
         if source is None: raise RuntimeError('No video downloaded')
+        if source.stat().st_size > 2 * 1024**3: raise RuntimeError('Source exceeds 2 GB')
         probe = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(source)]))
         duration = float(probe['format']['duration'])
         if not 20 <= duration <= 7200: raise RuntimeError('Supported duration is 20 seconds to 2 hours')
         audio = d / 'audio.wav'
         run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)])
-        global MODEL
-        with MODEL_LOCK:
-            if MODEL is None: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8')
-            segments, info = MODEL.transcribe(str(audio), word_timestamps=True, vad_filter=True)
-            cues = []
-            for s in segments:
-                for w in s.words or []:
-                    if w.word.strip() and w.end > w.start:
-                        cues.append({'start': w.start, 'end': w.end, 'text': w.word.strip()})
+        if ENGINE == 'openshorts':
+            from openshorts_adapter import transcribe_source
+            cues = transcribe_source(source)
+        else:
+            global MODEL
+            with MODEL_LOCK:
+                if MODEL is None: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8')
+                segments, info = MODEL.transcribe(str(audio), word_timestamps=True, vad_filter=True)
+                cues = []
+                for s in segments:
+                    for w in s.words or []:
+                        if w.word.strip() and w.end > w.start:
+                            cues.append({'start': w.start, 'end': w.end, 'text': w.word.strip()})
         if not cues or len(cues) > 15000: raise RuntimeError('No speech found or transcript too long')
         write(job, status='analyzed', duration=duration, cues=cues, source=str(source))
         audio.unlink(missing_ok=True)
     except Exception:
-        write(job, status='failed')
+        write(job, status='failed', error='Download or transcription failed. Check host logs, YouTube access, model downloads and available memory.')
 
 def stamp(t):
     centis = max(0, round(t * 100)); h, rem = divmod(centis, 360000); m, rem = divmod(rem, 6000); s, c = divmod(rem, 100)
@@ -129,8 +144,17 @@ def render(job, targets):
             if not 20 <= s.end-s.start <= 30 or s.end > state['duration']: raise RuntimeError('Invalid clip window')
             ass = d / f'{t.id}.ass'; output = d / f'{t.id}.mp4'
             captions(ass, state['cues'], s.start, s.end)
+            render_source = source
+            offset = s.start
+            if ENGINE == 'openshorts':
+                from openshorts_adapter import reframe_source
+                cut = d / f'{t.id}-cut.mp4'; vertical = d / f'{t.id}-vertical.mp4'
+                run(['ffmpeg', '-y', '-ss', str(s.start), '-i', str(source), '-t', str(s.end-s.start),
+                     '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', '-threads', '2', str(cut)])
+                reframe_source(cut, vertical)
+                render_source, offset = vertical, 0
             filters = f'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,ass={ass}'
-            run(['ffmpeg', '-y', '-ss', str(s.start), '-i', str(source), '-t', str(s.end-s.start),
+            run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-t', str(s.end-s.start),
                  '-vf', filters, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
                  '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)])
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
@@ -143,13 +167,15 @@ def render(job, targets):
             if not 200 <= response.status_code < 300: raise RuntimeError('Signed upload failed or expired')
             completed.append(str(t.id)); write(job, completed=completed)
             output.unlink(); ass.unlink()
+            if ENGINE == 'openshorts':
+                cut.unlink(missing_ok=True); vertical.unlink(missing_ok=True)
         write(job, status='complete', completed=completed)
         source.unlink(missing_ok=True)
     except Exception:
-        write(job, status='failed')
+        write(job, status='failed', error='Render or signed upload failed. Check host resources and upload expiry; saved clips remain available.')
 
-@app.get('/health')
-def health(): return {'ok': True, 'protocol': 'cutline-v1', 'protected': bool(TOKEN)}
+@app.get('/health', dependencies=[Depends(authorized)])
+def health(): return {'ok': True, 'protocol': 'cutline-v1', 'protected': bool(TOKEN), 'engine': ENGINE}
 
 @app.post('/jobs', dependencies=[Depends(authorized)])
 def start(body: Intake):
@@ -163,14 +189,14 @@ def start(body: Intake):
         active = sum(1 for p in ROOT.glob('*/state.json') if json.loads(p.read_text()).get('status') in ['transcribing','analyzed','rendering'])
         if active >= 3: raise HTTPException(429, 'Worker queue full')
         d.mkdir(exist_ok=True)
-    write(body.id, status='transcribing', completed=[])
+        (d / 'state.json').write_text(json.dumps({'status':'transcribing','completed':[]}))
     POOL.submit(download, body.id, str(body.url))
     return {'id': str(body.id)}
 
 @app.get('/jobs/{job}', dependencies=[Depends(authorized)])
 def status(job: uuid.UUID):
     s = read(job)
-    return {k: s[k] for k in ['status','duration','cues','completed'] if k in s}
+    return {k: s[k] for k in ['status','duration','cues','completed','error'] if k in s}
 
 @app.post('/jobs/{job}/render', dependencies=[Depends(authorized)])
 def begin_render(job: uuid.UUID, body: Render):

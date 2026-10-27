@@ -8,6 +8,8 @@ export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([re
   .inputValidator(d => z.object({ url: z.string().max(500), token: z.string().max(3000).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const url = workerUrl(data.url);
+    const { checkWorker } = await import("./cloud-clipper.server");
+    await checkWorker(url, data.token?.trim() || "");
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) throw new Error("Secure credential storage is not configured.");
     const { encrypt } = await import("./studio-crypto.server");
@@ -32,12 +34,17 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) throw new Error("Secure credential storage is not configured.");
     let sourceId = data.sourceId;
+    const { decrypt } = await import("./studio-crypto.server");
+    const { checkWorker } = await import("./cloud-clipper.server");
+    await checkWorker(worker.base_url, await decrypt(worker.encrypted_key, secret));
     if (sourceId) {
       const { data: source } = await context.supabase.from("studio_sources").select("youtube_id").eq("id", sourceId).single();
       if (!source || source.youtube_id !== youtube) throw new Error("Source video not found.");
     } else {
       const { fetchYouTube } = await import("./youtube.server");
-      const video = await fetchYouTube(youtube);
+      // Metadata/caption blocking must not prevent the worker's independent downloader.
+      const video = await fetchYouTube(youtube).catch(() => ({ title: `YouTube video ${youtube}`, author: "", thumbnail_url: null,
+        duration: null, transcript: [], transcript_status: "unavailable" }));
       const { data: source, error } = await context.supabase.from("studio_sources").insert({ ...video,
         transcript: video.transcript.map(c => ({ ...c })), youtube_id: youtube,
         url: `https://www.youtube.com/watch?v=${youtube}`, user_id: context.userId,

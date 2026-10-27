@@ -50,6 +50,13 @@
       "when": 1793093839287,
       "tag": "0006_cloud_clipping_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793096625565,
+      "tag": "0007_cloud_job_processing_lease",
+      "breakpoints": true
     }
   ]
 }

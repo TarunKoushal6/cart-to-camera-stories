@@ -20,7 +20,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
   const [file, setFile] = useState<File | null>(null), [status, setStatus] = useState(""), [busy, setBusy] = useState(false);
   const [platform, setPlatform] = useState<"instagram" | "facebook">("instagram"), [picked, setPicked] = useState<string[]>([]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["studio-clips", sourceId] });
-  const pending = clips.filter(c => c.video_path && c.viral_review && !c.approved_at);
+  const pending = clips.filter(c => c.video_path && c.viral_review);
 
   async function runBatch() {
     if (!file) { toast.error("Choose the source video file first."); return; }
@@ -53,17 +53,27 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
 
   async function approveAndSchedule(ids: string[]) {
     setBusy(true);
+    const succeeded: string[] = [], failed: string[] = [];
     try {
-      const slots = nextDaySlots(ids.length);
-      for (const [i, id] of ids.entries()) {
+      const existing = await supabase.from("studio_posts").select("clip_id,scheduled_at").eq("platform", platform).in("clip_id", ids).in("status", ["scheduled", "processing", "published"]);
+      if (existing.error) throw existing.error;
+      const queued = new Set(existing.data.map(p => p.clip_id));
+      const remaining = ids.filter(id => !queued.has(id));
+      const slots = nextDaySlots(remaining.length);
+      succeeded.push(...ids.filter(id => queued.has(id)));
+      for (const [i, id] of remaining.entries()) {
+        try {
         const c = clips.find(x => x.id === id);
         const slot = slots[i];
         if (!c || !slot) throw new Error("Clip no longer available. Refresh and select again.");
-        await approve({ data: { clipId: id } });
+        if (!c.approved_at) await approve({ data: { clipId: id } });
         await publish({ data: { clipId: id, platform, caption: c.caption, scheduledAt: slot.toISOString() } });
+        succeeded.push(id);
+        } catch { failed.push(id); }
       }
-      toast.success(`${ids.length} clip(s) scheduled for tomorrow from 10:00`);
-      setPicked([]);
+      if (succeeded.length) toast.success(`${succeeded.length} clip(s) queued; existing posts were not duplicated`);
+      if (failed.length) toast.error(`${failed.length} clip(s) couldn't be scheduled. They remain selected for retry.`);
+      setPicked(failed);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't schedule"); }
     finally { setBusy(false); refresh(); }
   }
@@ -81,7 +91,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
         <div className="flex gap-2"><select aria-label="Batch platform" className="studio-select" value={platform} onChange={e => setPlatform(e.target.value as "instagram" | "facebook")}><option value="instagram">Instagram Reels</option><option value="facebook">Facebook Reels</option></select>
           <Button size="sm" disabled={busy || !picked.length} onClick={() => approveAndSchedule(picked)}><CalendarCheck className="h-4 w-4" />Approve & schedule tomorrow ({picked.length})</Button></div></div>
       {pending.map(c => { const r = c.viral_review as Review; return <label key={c.id} className="flex gap-3 items-start text-sm border border-border rounded p-2">
-        <input type="checkbox" checked={picked.includes(c.id)} onChange={e => setPicked(p => e.target.checked ? [...p, c.id] : p.filter(x => x !== c.id))} />
+        <input type="checkbox" disabled={busy} checked={picked.includes(c.id)} onChange={e => setPicked(p => e.target.checked ? [...p, c.id] : p.filter(x => x !== c.id))} />
         <span className="min-w-0"><b>{c.title}</b> · <span className={r?.verdict === "Viral" ? "text-primary" : "text-muted-foreground"}>{r?.verdict} · hook {r?.hook}</span><span className="block text-xs text-muted-foreground line-clamp-2">{r?.critique}</span></span>
       </label>; })}
     </div>}

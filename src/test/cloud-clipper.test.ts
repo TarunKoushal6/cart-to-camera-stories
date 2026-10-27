@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { workerUrl, workerStatusSchema, cloudTargetSchema } from "@/lib/cloud-clipper-rules";
+import { workerUrl, workerStatusSchema, cloudTargetSchema, workerHealthSchema } from "@/lib/cloud-clipper-rules";
 import { canApproveClip } from "@/lib/clip-review-rules";
 
 describe("cloud clipping boundaries", () => {
+  it("requires the Cutline handshake even when backed by OpenShorts", () => {
+    expect(workerHealthSchema.safeParse({ok:true,protocol:"cutline-v1",protected:true,engine:"openshorts"}).success).toBe(true);
+    expect(workerHealthSchema.safeParse({ok:true,protocol:"openshorts"}).success).toBe(false);
+  });
   it("saves a public HTTPS endpoint and rejects local or credential-bearing URLs", () => {
     expect(workerUrl("https://creator-worker.hf.space/")).toBe("https://creator-worker.hf.space");
     for (const url of ["http://creator.hf.space", "https://127.0.0.1", "https://localhost", "https://user:token@creator.hf.space", "https://creator.hf.space?token=secret"]) expect(() => workerUrl(url)).toThrow();

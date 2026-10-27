@@ -47,10 +47,11 @@ export function clipCues(cues: Cue[], start: number, end: number): Cue[] {
 export function stamp(seconds: number) { return `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,"0")}`; }
 export function studioHead(title: string, description: string) { return { meta: [{ title: `${title} — Cutline` }, { name: "description", content: description }, { property: "og:title", content: `${title} — Cutline` }, { property: "og:description", content: description }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }; }/** Next-day posting slots in local time: first at startHour, then every gapHours, wrapping within the day. */
 export function nextDaySlots(count: number, now = new Date(), startHour = 10, gapHours = 2) {
+  const gapMinutes = count > 1 ? Math.min(gapHours * 60, Math.floor((24 * 60 - 1 - startHour * 60) / (count - 1))) : gapHours * 60;
   return Array.from({ length: count }, (_, i) => {
     const d = new Date(now); d.setDate(d.getDate() + 1);
-    const minutes = startHour * 60 + i * gapHours * 60;
-    d.setHours(Math.floor(minutes / 60) % 24, minutes % 60, 0, 0);
+    const minutes = startHour * 60 + i * gapMinutes;
+    d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
     return d;
   });
 }

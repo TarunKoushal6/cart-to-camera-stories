@@ -26,16 +26,20 @@ export function CloudWorkerSettings({ savedUrl }: { savedUrl: string | null }) {
     </form>
     <article className="border border-border bg-card rounded-md p-5 space-y-3">
       <h3 className="font-display font-bold">Deploy Free Worker</h3>
-      <p className="text-sm text-muted-foreground">Self-host on Hugging Face’s free CPU tier or a Docker host. YouTube download, free Whisper transcription, FFmpeg vertical cuts and karaoke captions are included.</p>
+      <p className="text-sm text-muted-foreground">The default download is Cutline’s own worker, not OpenShorts. It downloads YouTube videos, transcribes with free Whisper, and makes center-cropped vertical clips with karaoke captions.</p>
       <ol className="list-decimal pl-5 text-sm space-y-2">
-        <li>Create a Docker / Blank Space and upload the four files below.</li>
+        <li>Create a Docker / Blank Space and upload app.py, openshorts_adapter.py, Dockerfile, requirements.txt and README.md.</li>
         <li>Add WORKER_TOKEN in your host’s secret settings; save the same token above.</li>
         <li>Wait for the host to start, then save its direct HTTPS address here.</li>
       </ol>
-      <div className="flex flex-wrap gap-2">{["app.py", "Dockerfile", "requirements.txt", "README.md"].map(file => <Button key={file} asChild size="sm" variant="outline"><a href={`/cloud-clipper/${file}`} download><Download className="h-4 w-4" />{file}</a></Button>)}
+      <div className="flex flex-wrap gap-2">{["app.py", "openshorts_adapter.py", "Dockerfile", "Dockerfile.openshorts", "requirements.txt", "README.md"].map(file => <Button key={file} asChild size="sm" variant="outline"><a href={`/cloud-clipper/${file}`} download><Download className="h-4 w-4" />{file}</a></Button>)}
         <Button asChild size="sm" variant="outline"><a href="https://huggingface.co/new-space" target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" />Create Space</a></Button>
       </div>
       <p className="text-xs text-muted-foreground">Free hosts can sleep and YouTube can block downloads. Setup and processing may take longer than two minutes. Your AI provider may charge. Other endpoints must implement the included Cutline protocol.</p>
+      <h3 className="font-display font-bold">Optional OpenShorts adapter</h3>
+      <p className="text-sm text-muted-foreground">Use Dockerfile.openshorts with the pinned full OpenShorts backend image described in README.md. This adapter reuses its downloader, transcription and vertical reframing; your saved AI still selects and reviews up to 15 moments. OpenShorts’ native API cannot be entered here directly.</p>
+      <p className="text-xs text-muted-foreground">OpenShorts requires its full dependencies, model downloads and adequate memory; free Spaces compatibility is not verified. Its AI Shorts, Remotion templates, dubbing and publishing are not included. Clips await your approval before next-day Instagram or Facebook scheduling; YouTube scheduling remains in each clip’s editor.</p>
+      <Button asChild size="sm" variant="outline"><a href="https://github.com/mutonby/openshorts" target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" />OpenShorts repository</a></Button>
     </article>
   </section>;
 }

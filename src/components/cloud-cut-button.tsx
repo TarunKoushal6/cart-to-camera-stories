@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cloud, Loader2, RefreshCw } from "lucide-react";
@@ -19,10 +19,15 @@ export function CloudCutButton({ url, sourceId }: { url: string; sourceId?: stri
       return r.data;
     } });
   const job = jobs[0], active = job && !["ready", "failed"].includes(job.status);
+  useEffect(() => {
+    if (!active) return;
+    const interval = setInterval(() => { void refresh(); }, 15000);
+    return () => clearInterval(interval);
+  }, [job?.id, active, busy]);
   async function refresh() {
     if (!job || busy) return;
     setBusy(true);
-    try { await poll({ data: { jobId: job.id } }); await qc.invalidateQueries({ queryKey: ["studio-clips", sourceId] }); }
+    try { await poll({ data: { jobId: job.id } }); await Promise.all([qc.invalidateQueries({ queryKey: ["studio-clips", sourceId] }), qc.invalidateQueries({ queryKey: ["studio-sources"] }), qc.invalidateQueries({ queryKey: ["studio-clip-count"] })]); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't refresh cloud job"); }
     finally { setBusy(false); await qc.invalidateQueries({ queryKey: ["cloud-jobs", sourceId] }); }
   }
