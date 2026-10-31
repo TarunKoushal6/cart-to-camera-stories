@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { workerUrl } from "./cloud-clipper-rules";
+import { workerUrl, workerProgressSchema } from "./cloud-clipper-rules";
 import { youtubeId } from "./studio-rules";
 
 export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
@@ -73,4 +73,24 @@ export const pollCloudCut = createServerFn({ method: "POST" }).middleware([requi
   .handler(async ({ data, context }) => {
     const { advanceCloudCut } = await import("./cloud-clipper-jobs.server");
     return advanceCloudCut(data, context);
+  });
+
+/** Read-only download/transcription progress; never advances or claims the job. */
+export const cloudCutProgress = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(d => z.object({ jobId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: job } = await context.supabase.from("studio_cloud_jobs").select("status,worker_url,worker_job_id")
+      .eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
+    if (!job || job.status !== "transcribing") return null;
+    const secret = process.env["STUDIO_ENCRYPTION_KEY"];
+    if (!secret) return null;
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId).eq("kind", "cloud_worker");
+      const { callWorker, resolveWorker } = await import("./cloud-clipper.server");
+      const worker = await resolveWorker(settings?.[0], secret);
+      if (worker.url !== job.worker_url) return null;
+      const parsed = workerProgressSchema.safeParse(await callWorker(job.worker_url, worker.token, `/jobs/${job.worker_job_id}`));
+      return parsed.success && parsed.data.stage ? parsed.data : null;
+    } catch { return null; }
   });
