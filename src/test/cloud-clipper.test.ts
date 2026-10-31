@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { workerUrl, workerStatusSchema, cloudTargetSchema, workerHealthSchema } from "@/lib/cloud-clipper-rules";
+import { workerUrl, workerStatusSchema, cloudTargetSchema, workerHealthSchema, workerHttpError } from "@/lib/cloud-clipper-rules";
 import { canApproveClip } from "@/lib/clip-review-rules";
 
 describe("cloud clipping boundaries", () => {
+  it("explains HTTP 530 as an offline tunnel or worker server", () => {
+    expect(workerHttpError(530)).toMatch(/Cloudflare tunnel/);
+    expect(workerHttpError(530)).toMatch(/Uvicorn/);
+    expect(workerHttpError(502)).not.toMatch(/Cloudflare tunnel/);
+  });
   it("requires the Cutline handshake even when backed by OpenShorts", () => {
     expect(workerHealthSchema.safeParse({ok:true,protocol:"cutline-v1",protected:true,engine:"openshorts"}).success).toBe(true);
     expect(workerHealthSchema.safeParse({ok:true,protocol:"openshorts"}).success).toBe(false);
