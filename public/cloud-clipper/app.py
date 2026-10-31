@@ -271,8 +271,12 @@ def render(job, targets):
                 cut.unlink(missing_ok=True); vertical.unlink(missing_ok=True)
         write(job, status='complete', completed=completed)
         source.unlink(missing_ok=True)
-    except Exception:
-        write(job, status='failed', error='Render or signed upload failed. Check host resources and upload expiry; saved clips remain available.')
+    except StepError as e:
+        log.error('Render %s failed: %s', job, e)
+        write(job, status='failed', error=f'{str(e)[:300]} Saved clips remain available.')
+    except Exception as e:
+        log.exception('Render %s failed', job)
+        write(job, status='failed', error=f'Render or signed upload failed ({type(e).__name__}). Check host resources and upload expiry; saved clips remain available.')
 
 @app.get('/health', dependencies=[Depends(authorized)])
 def health(): return {'ok': True, 'protocol': 'cutline-v1', 'protected': bool(TOKEN), 'engine': ENGINE}
