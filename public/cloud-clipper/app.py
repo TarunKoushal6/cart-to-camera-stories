@@ -1,3 +1,4 @@
+import traceback
 """Cutline protocol v1: download/transcribe, then render scoped signed-upload targets.
 No database/service-role key or personal AI key is needed on this worker.
 """
@@ -14,7 +15,7 @@ from faster_whisper import WhisperModel
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('cutline')
-ROOT = Path(os.getenv('DATA_DIR', '/tmp/cutline')); ROOT.mkdir(parents=True, exist_ok=True)
+ROOT = Path(os.getenv('DATA_DIR') or Path(__file__).resolve().parent / 'data'); ROOT.mkdir(parents=True, exist_ok=True)
 TOKEN = os.getenv('WORKER_TOKEN', '')
 AUTH = HTTPBearer(auto_error=False)
 POOL = ThreadPoolExecutor(max_workers=1)
@@ -68,7 +69,7 @@ def write(job, **fields):
 class StepError(RuntimeError):
     """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
 
-def run(args, timeout=7200, failure='Media command failed'):
+def run(args, timeout=14400, failure='Media command failed'):
     # Logs never contain signed upload URLs, bearer tokens or provider keys.
     try:
         r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
@@ -124,7 +125,7 @@ def ytdlp(job, url, d):
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
-            '--max-filesize', '2G', '--match-filter', 'duration <= 7200', *extra,
+            '--max-filesize', '2G', '--match-filter', 'duration <= 14400', *extra,
             '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', '--merge-output-format', 'mp4',
             '-o', str(d / 'source.%(ext)s'), url]
     try:
@@ -133,7 +134,7 @@ def ytdlp(job, url, d):
         raise StepError('yt-dlp is not installed on the worker. Run: pip install -U "yt-dlp[default]".')
     tail = deque(maxlen=200); base = 0.0; prev = 0.0; prev_total = None; part = 1; last = 0.0; began = time.time()
     for line in p.stdout:
-        if time.time() - began > 7200: p.kill(); raise StepError('Download took longer than 2 hours.')
+        if time.time() - began > 14400: p.kill(); raise StepError('Download took longer than 4 hours.')
         if not line.startswith('CUTLINE '):
             tail.append(line.rstrip()); continue
         dl, total, est, speed, eta = (num(x) for x in line.split()[1:6])
@@ -170,7 +171,7 @@ def download(job, url):
         write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size})
         probe = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(source)], failure='FFprobe could not read the downloaded video'))
         duration = float(probe['format']['duration'])
-        if not 20 <= duration <= 7200: raise StepError('Supported duration is 20 seconds to 2 hours')
+        if not 20 <= duration <= 14400: raise StepError('Supported duration is 20 seconds to 4 hours')
         audio = d / 'audio.wav'
         run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
         if ENGINE == 'openshorts':
@@ -201,13 +202,13 @@ def download(job, url):
         audio.unlink(missing_ok=True)
     except StepError as e:
         log.error('Job %s failed: %s', job, e)
-        write(job, status='failed', error=str(e)[:450])
+        write(job, status='failed', error=f'{e}\n\n{traceback.format_exc()}')
     except MemoryError:
         log.exception('Job %s out of memory', job)
-        write(job, status='failed', error='The worker ran out of memory. Use a smaller WHISPER_MODEL (tiny/base) or a machine with more RAM.')
+        write(job, status='failed', error='The worker ran out of memory. Use a smaller WHISPER_MODEL (tiny/base) or a machine with more RAM.\n\n' + traceback.format_exc())
     except Exception as e:
         log.exception('Job %s failed', job)
-        write(job, status='failed', error=f'Download or transcription failed ({type(e).__name__}). See worker console for details.')
+        write(job, status='failed', error=f'Download or transcription failed: {type(e).__name__}: {e}\n\n{traceback.format_exc()}')
 
 def stamp(t):
     centis = max(0, round(t * 100)); h, rem = divmod(centis, 360000); m, rem = divmod(rem, 6000); s, c = divmod(rem, 100)
@@ -273,10 +274,10 @@ def render(job, targets):
         source.unlink(missing_ok=True)
     except StepError as e:
         log.error('Render %s failed: %s', job, e)
-        write(job, status='failed', error=f'{str(e)[:300]} Saved clips remain available.')
+        write(job, status='failed', error=f'{e} Saved clips remain available.\n\n{traceback.format_exc()}')
     except Exception as e:
         log.exception('Render %s failed', job)
-        write(job, status='failed', error=f'Render or signed upload failed ({type(e).__name__}). Check host resources and upload expiry; saved clips remain available.')
+        write(job, status='failed', error=f'Render or signed upload failed: {type(e).__name__}: {e}\n\n{traceback.format_exc()}')
 
 @app.get('/health', dependencies=[Depends(authorized)])
 def health(): return {'ok': True, 'protocol': 'cutline-v1', 'protected': bool(TOKEN), 'engine': ENGINE}
