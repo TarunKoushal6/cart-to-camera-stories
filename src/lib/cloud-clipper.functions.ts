@@ -55,12 +55,10 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
     if (existing) return { id: existing.id, sourceId };
     const jobId = crypto.randomUUID();
     const { error } = await supabaseAdmin.from("studio_cloud_jobs").insert({ id: jobId, user_id: context.userId,
-      source_id: sourceId, worker_url: worker.base_url, worker_job_id: jobId });
+      source_id: sourceId, worker_url: worker.url, worker_job_id: jobId });
     if (error) throw new Error("Couldn't create clipping job.");
     try {
-      const { decrypt } = await import("./studio-crypto.server");
-      const { callWorker } = await import("./cloud-clipper.server");
-      await callWorker(worker.base_url, await decrypt(worker.encrypted_key, secret), "/jobs", {
+      await callWorker(worker.url, worker.token, "/jobs", {
         id: jobId, url: `https://www.youtube.com/watch?v=${youtube}`,
       });
     } catch (e) {

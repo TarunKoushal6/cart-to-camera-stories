@@ -18,12 +18,12 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     if (!claimLease.data) return { status: job.status };
     try {
     const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
-    const worker = settings?.find(s => s.kind === "cloud_worker");
     const ai = settings?.find(s => s.kind === "ai");
-    if (!worker || worker.base_url !== job.worker_url || !ai) throw new Error("Restore the worker and AI settings used for this job.");
     const { decrypt } = await import("./studio-crypto.server");
-    const { callWorker } = await import("./cloud-clipper.server");
-    const token = await decrypt(worker.encrypted_key, secret);
+    const { callWorker, resolveWorker } = await import("./cloud-clipper.server");
+    const worker = await resolveWorker(settings?.find(s => s.kind === "cloud_worker"), secret);
+    if (worker.url !== job.worker_url || !ai) throw new Error("Restore the worker and AI settings used for this job.");
+    const token = worker.token;
     const state = workerStatusSchema.parse(await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}`));
     if (state.status === "failed") {
       await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: state.error || "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory." }).eq("id", job.id);
