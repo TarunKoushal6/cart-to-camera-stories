@@ -1,4 +1,4 @@
-import { workerUrl, workerHealthSchema, DEFAULT_CLOUD_WORKER_URL } from "./cloud-clipper-rules";
+import { workerUrl, workerHealthSchema, workerHttpError, DEFAULT_CLOUD_WORKER_URL } from "./cloud-clipper-rules";
 
 export async function checkWorker(base: string, token: string) {
   const parsed = workerHealthSchema.safeParse(await callWorker(base, token, "/health"));
@@ -24,6 +24,6 @@ export async function callWorker(base: string, token: string, path: string, body
     redirect: "manual", signal: AbortSignal.timeout(20000),
   });
   if (response.status >= 300 && response.status < 400) throw new Error("Cloud worker tried to redirect. Save its final direct HTTPS address.");
-  if (!response.ok) throw new Error(`Cloud worker request failed (${response.status}). Check its URL, token and availability.`);
+  if (!response.ok) throw new Error(workerHttpError(response.status));
   return response.json() as Promise<unknown>;
 }

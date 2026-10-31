@@ -22,6 +22,15 @@ export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([re
     return { saved: true };
   });
 
+export const resetCloudWorker = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("studio_credentials").delete()
+      .eq("user_id", context.userId).eq("kind", "cloud_worker");
+    if (error) throw new Error("Couldn't reset cloud worker.");
+    return { reset: true };
+  });
+
 export const startCloudCut = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ url: z.string().max(2000), sourceId: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context }) => {

@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
-import { Cloud, Download, Save, ExternalLink } from "lucide-react";
+import { Cloud, Download, Save, ExternalLink, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { saveCloudWorker } from "@/lib/cloud-clipper.functions";
+import { saveCloudWorker, resetCloudWorker } from "@/lib/cloud-clipper.functions";
 import { DEFAULT_CLOUD_WORKER_URL } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function CloudWorkerSettings({ savedUrl }: { savedUrl: string | null }) {
-  const save = useServerFn(saveCloudWorker), qc = useQueryClient();
+  const save = useServerFn(saveCloudWorker), reset = useServerFn(resetCloudWorker), qc = useQueryClient();
   const [url, setUrl] = useState(""), [token, setToken] = useState(""), [busy, setBusy] = useState(false);
   return <section className="mt-10 border-t border-border pt-7 space-y-5">
     <h2 className="flex items-center gap-3 text-xl font-display font-bold"><Cloud className="h-5 w-5 text-primary" />Cloud Clipper Worker</h2>
@@ -24,7 +24,16 @@ export function CloudWorkerSettings({ savedUrl }: { savedUrl: string | null }) {
       <label className="text-sm block">Worker URL<Input aria-label="Cloud worker URL" className="mt-2" type="url" placeholder="https://your-space.hf.space" required value={url} onChange={e => setUrl(e.target.value)} /></label>
       <label className="text-sm block">Secret token (optional)<Input aria-label="Cloud worker secret token" className="mt-2" type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} placeholder="Same WORKER_TOKEN as your host" /></label>
       <p className="text-xs text-muted-foreground">Saving replaces the connection and token. An empty token connects without authentication. Use a token on a public worker.</p>
-      <Button disabled={busy}><Save className="h-4 w-4" />{busy ? "Saving…" : "Save worker"}</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={busy}><Save className="h-4 w-4" />{busy ? "Saving…" : "Save worker"}</Button>
+        {savedUrl && <Button type="button" variant="outline" disabled={busy} onClick={async () => {
+          if (!confirm("Remove your saved worker and use the shared default worker?")) return;
+          setBusy(true);
+          try { await reset(); setUrl(""); setToken(""); await qc.invalidateQueries({ queryKey: ["studio-settings"] }); toast.success("Now using the shared default worker"); }
+          catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't reset worker"); }
+          finally { setBusy(false); }
+        }}><RotateCcw className="h-4 w-4" />Reset to shared default</Button>}
+      </div>
     </form>
     <article className="border border-border bg-card rounded-md p-5 space-y-3">
       <h3 className="font-display font-bold">Deploy Free Worker</h3>
