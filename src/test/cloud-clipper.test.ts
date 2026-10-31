@@ -23,3 +23,9 @@ describe("cloud clipping boundaries", () => {
     expect(workerStatusSchema.safeParse({status:"analyzed",duration:90,cues:[{start:5,end:4,text:"bad"}]}).success).toBe(false);
   });
 });
+describe("shared default worker", () => {
+  it("uses the shared worker for accounts without their own", async () => {
+    const { resolveWorker } = await import("@/lib/cloud-clipper.server");
+    expect((await resolveWorker(undefined, "k")).url).toBe("https://interstate-boolean-pediatric-associated.trycloudflare.com");
+  });
+});
