@@ -19,8 +19,8 @@ export const cloudTargetSchema = z.object({
 });
 const maybeNum = z.number().nonnegative().nullable().optional();
 export const workerProgressSchema = z.object({
-  stage: z.enum(["queued", "downloading", "preparing_audio", "loading_model", "transcribing", "analyzed"]).optional(),
-  progress: z.object({ downloaded: maybeNum, total: maybeNum, speed: maybeNum, eta: maybeNum, part: maybeNum, percent: maybeNum }).partial().optional(),
+  stage: z.enum(["queued", "downloading", "preparing_audio", "loading_model", "transcribing", "analyzed"]).optional().catch(undefined),
+  progress: z.object({ downloaded: maybeNum, total: maybeNum, speed: maybeNum, eta: maybeNum, part: maybeNum, percent: maybeNum }).partial().optional().catch(undefined),
 });
 export type WorkerProgress = z.infer<typeof workerProgressSchema>;
 export const workerStatusSchema = z.object({
