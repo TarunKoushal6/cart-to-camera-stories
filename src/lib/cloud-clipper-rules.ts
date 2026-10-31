@@ -67,3 +67,8 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
   if (p.stage === "transcribing") return { label: `Transcribing speech${g.percent != null ? ` · ${Math.round(g.percent)}%` : ""}`, percent: g.percent ?? null };
   return null;
 }
+/** Plain-language reason for a failed worker HTTP response. */
+export function workerHttpError(status: number) {
+  if (status === 530) return "Cloud worker is offline (HTTP 530): the Cloudflare tunnel or the worker server (Uvicorn) behind it is stopped or disconnected. Restart the worker and its tunnel, then retry.";
+  return `Cloud worker request failed (${status}). Check its URL, token and availability.`;
+}
