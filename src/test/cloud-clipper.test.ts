@@ -31,7 +31,7 @@ describe("cloud clipping boundaries", () => {
 describe("shared default worker", () => {
   it("uses the shared worker for accounts without their own", async () => {
     const { resolveWorker } = await import("@/lib/cloud-clipper.server");
-    expect((await resolveWorker(undefined, "k")).url).toBe("https://interstate-boolean-pediatric-associated.trycloudflare.com");
+    expect((await resolveWorker(undefined, "k")).url).toBe("https://periodically-reproduced-owned-controller.trycloudflare.com");
   });
 });
 describe("worker download progress", () => {

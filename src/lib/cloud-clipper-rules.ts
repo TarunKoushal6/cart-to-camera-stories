@@ -2,7 +2,7 @@ import { z } from "zod";
 import { cueSchema, segmentSchema } from "./studio-rules";
 
 /** Shared worker used by every account that hasn't saved its own. */
-export const DEFAULT_CLOUD_WORKER_URL = "https://interstate-boolean-pediatric-associated.trycloudflare.com";
+export const DEFAULT_CLOUD_WORKER_URL = "https://periodically-reproduced-owned-controller.trycloudflare.com";
 
 export function workerUrl(value: string) {
   const url = new URL(value.trim());
