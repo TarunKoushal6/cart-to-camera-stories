@@ -62,52 +62,149 @@ def write(job, **fields):
         data.update(fields)
         tmp = p.with_suffix('.tmp'); tmp.write_text(json.dumps(data, ensure_ascii=False)); tmp.replace(p)
 
-def run(args, timeout=7200):
+class StepError(RuntimeError):
+    """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
+
+def run(args, timeout=7200, failure='Media command failed'):
     # Logs never contain signed upload URLs, bearer tokens or provider keys.
-    r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-    if r.returncode: raise RuntimeError('Media command failed (download blocked, unsupported media or insufficient memory)')
+    try:
+        r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    except FileNotFoundError:
+        raise StepError(f'{args[0]} is not installed on the worker. Install FFmpeg/yt-dlp and restart.')
+    except subprocess.TimeoutExpired:
+        raise StepError(f'{failure}: timed out.')
+    if r.returncode:
+        log.error('%s failed: %s', args[0], r.stderr.decode(errors='replace')[-2000:])
+        raise StepError(f'{failure}. See worker console for details.')
     return r.stdout.decode()
+
+def explain_download(output):
+    s = output.lower()
+    if 'no such option' in s or 'unrecognized arguments' in s:
+        return 'yt-dlp on the worker is outdated. Run: pip install -U "yt-dlp[default]" and restart the worker.'
+    if 'sign in to confirm' in s or 'not a bot' in s:
+        return 'YouTube blocked this worker as a bot. Set YOUTUBE_COOKIES_FILE to exported YouTube cookies, or update yt-dlp.'
+    if 'private video' in s or 'members-only' in s or 'join this channel' in s:
+        return 'This video is private or members-only.'
+    if 'confirm your age' in s or 'age-restricted' in s:
+        return 'This video is age-restricted; the worker needs YouTube cookies (YOUTUBE_COOKIES_FILE).'
+    if 'video unavailable' in s or 'has been removed' in s:
+        return 'This video is unavailable or removed.'
+    if 'larger than max-filesize' in s:
+        return 'Video is larger than the 2 GB limit at 720p.'
+    if 'does not pass filter' in s:
+        return 'Video is longer than the 2 hour limit.'
+    if 'requested format is not available' in s or 'only images are available' in s:
+        return 'YouTube gave no downloadable format. Update yt-dlp and install Deno on the worker.'
+    if 'ffmpeg' in s and ('not found' in s or 'not installed' in s):
+        return 'FFmpeg is not installed on the worker; yt-dlp needs it to merge video and audio.'
+    if 'http error 403' in s:
+        return 'YouTube refused the download (403). Update yt-dlp, install Deno, or add YouTube cookies.'
+    if 'http error 429' in s or 'too many requests' in s:
+        return 'YouTube is rate-limiting this worker (429). Wait a while or add YouTube cookies.'
+    if 'timed out' in s or 'name or service not known' in s or 'connection' in s and 'error' in s:
+        return 'The worker could not reach YouTube. Check its internet connection.'
+    if 'no space left' in s:
+        return 'The worker ran out of disk space.'
+    errors = [l for l in output.splitlines() if 'ERROR' in l]
+    return ('Download failed: ' + errors[-1].split('ERROR:', 1)[-1].strip())[:300] if errors else 'Download failed. See worker console for details.'
+
+def num(v):
+    try: return float(v)
+    except (TypeError, ValueError): return None
+
+PROGRESS = 'download:CUTLINE %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s'
+
+def ytdlp(job, url, d):
+    cookie_file = os.getenv('YOUTUBE_COOKIES_FILE', '')
+    extra = ['--cookies', cookie_file] if cookie_file else []
+    # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
+    if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
+    args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
+            '--max-filesize', '2G', '--match-filter', 'duration <= 7200', *extra,
+            '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', '--merge-output-format', 'mp4',
+            '-o', str(d / 'source.%(ext)s'), url]
+    try:
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    except FileNotFoundError:
+        raise StepError('yt-dlp is not installed on the worker. Run: pip install -U "yt-dlp[default]".')
+    tail = deque(maxlen=200); base = 0.0; prev = 0.0; prev_total = None; part = 1; last = 0.0; began = time.time()
+    for line in p.stdout:
+        if time.time() - began > 7200: p.kill(); raise StepError('Download took longer than 2 hours.')
+        if not line.startswith('CUTLINE '):
+            tail.append(line.rstrip()); continue
+        dl, total, est, speed, eta = (num(x) for x in line.split()[1:6])
+        if dl is None: continue
+        total = total or est
+        if prev and dl < prev * 0.5:  # yt-dlp started the next stream (audio after video)
+            base += prev_total or prev; part += 1
+        prev, prev_total = dl, total
+        now = time.time()
+        if now - last >= 1:
+            last = now
+            write(job, stage='downloading', progress={'downloaded': base + dl, 'total': base + total if total else None,
+                                                      'speed': speed, 'eta': eta, 'part': part})
+    code = p.wait()
+    output = '\n'.join(tail)
+    source = next((f for f in d.glob('source.*') if f.suffix in ['.mp4', '.webm', '.mkv']), None)
+    if code or source is None:
+        log.error('yt-dlp failed (%s): %s', code, output[-3000:])
+        raise StepError(explain_download(output))
+    return source
 
 def download(job, url):
     try:
         d = folder(job)
+        write(job, stage='downloading', progress={})
         if ENGINE == 'openshorts':
             from openshorts_adapter import download_source
             source = download_source(url, d)
         else:
-            cookie_file = os.getenv('YOUTUBE_COOKIES_FILE', '')
-            extra = ['--cookies', cookie_file] if cookie_file else []
-            run(['yt-dlp', '--no-playlist', '--max-filesize', '2G', '--match-filter', 'duration <= 7200',
-                 '--js-runtimes', 'deno', *extra,
-                 '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]', '--merge-output-format', 'mp4',
-                 '-o', str(d / 'source.%(ext)s'), url])
-            files = list(d.glob('source.*'))
-            source = next((p for p in files if p.suffix in ['.mp4', '.webm', '.mkv']), None)
-        if source is None: raise RuntimeError('No video downloaded')
-        if source.stat().st_size > 2 * 1024**3: raise RuntimeError('Source exceeds 2 GB')
-        probe = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(source)]))
+            source = ytdlp(job, url, d)
+        if source is None: raise StepError('No video downloaded')
+        size = source.stat().st_size
+        if size > 2 * 1024**3: raise StepError('Source exceeds 2 GB')
+        write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size})
+        probe = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(source)], failure='FFprobe could not read the downloaded video'))
         duration = float(probe['format']['duration'])
-        if not 20 <= duration <= 7200: raise RuntimeError('Supported duration is 20 seconds to 2 hours')
+        if not 20 <= duration <= 7200: raise StepError('Supported duration is 20 seconds to 2 hours')
         audio = d / 'audio.wav'
-        run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)])
+        run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
         if ENGINE == 'openshorts':
+            write(job, stage='transcribing', progress={})
             from openshorts_adapter import transcribe_source
             cues = transcribe_source(source)
         else:
             global MODEL
             with MODEL_LOCK:
-                if MODEL is None: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8')
+                if MODEL is None:
+                    write(job, stage='loading_model', progress={})
+                    try: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8')
+                    except Exception:
+                        log.exception('Whisper model load failed')
+                        raise StepError('Could not load the Whisper model. The first run needs internet access and about 1 GB free RAM.')
+                write(job, stage='transcribing', progress={'percent': 0})
                 segments, info = MODEL.transcribe(str(audio), word_timestamps=True, vad_filter=True)
-                cues = []
+                cues = []; last = 0.0; total = info.duration or duration
                 for s in segments:
                     for w in s.words or []:
                         if w.word.strip() and w.end > w.start:
                             cues.append({'start': w.start, 'end': w.end, 'text': w.word.strip()})
-        if not cues or len(cues) > 15000: raise RuntimeError('No speech found or transcript too long')
-        write(job, status='analyzed', duration=duration, cues=cues, source=str(source))
+                    if time.time() - last >= 2:
+                        last = time.time(); write(job, progress={'percent': min(100, round(s.end / total * 100, 1))})
+        if not cues: raise StepError('No speech found in this video, so no captions could be made.')
+        if len(cues) > 15000: raise StepError('Transcript is too long (over 15,000 words).')
+        write(job, status='analyzed', stage='analyzed', progress={}, duration=duration, cues=cues, source=str(source))
         audio.unlink(missing_ok=True)
-    except Exception:
-        write(job, status='failed', error='Download or transcription failed. Check host logs, YouTube access, model downloads and available memory.')
+    except StepError as e:
+        log.error('Job %s failed: %s', job, e)
+        write(job, status='failed', error=str(e)[:450])
+    except MemoryError:
+        log.exception('Job %s out of memory', job)
+        write(job, status='failed', error='The worker ran out of memory. Use a smaller WHISPER_MODEL (tiny/base) or a machine with more RAM.')
+    except Exception as e:
+        log.exception('Job %s failed', job)
+        write(job, status='failed', error=f'Download or transcription failed ({type(e).__name__}). See worker console for details.')
 
 def stamp(t):
     centis = max(0, round(t * 100)); h, rem = divmod(centis, 360000); m, rem = divmod(rem, 6000); s, c = divmod(rem, 100)
