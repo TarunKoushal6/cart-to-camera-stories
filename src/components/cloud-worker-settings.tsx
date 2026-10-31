@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Cloud, Download, Save, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { saveCloudWorker } from "@/lib/cloud-clipper.functions";
+import { DEFAULT_CLOUD_WORKER_URL } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -12,7 +13,8 @@ export function CloudWorkerSettings({ savedUrl }: { savedUrl: string | null }) {
   const [url, setUrl] = useState(""), [token, setToken] = useState(""), [busy, setBusy] = useState(false);
   return <section className="mt-10 border-t border-border pt-7 space-y-5">
     <h2 className="flex items-center gap-3 text-xl font-display font-bold"><Cloud className="h-5 w-5 text-primary" />Cloud Clipper Worker</h2>
-    {savedUrl && <p className="text-sm text-muted-foreground break-all">Connected · {savedUrl}</p>}
+    <p className="text-sm text-muted-foreground break-all">{savedUrl ? `Connected · ${savedUrl}` : `Using shared default worker · ${DEFAULT_CLOUD_WORKER_URL}`}</p>
+    <p className="text-xs text-muted-foreground">Every account uses the shared worker unless it saves its own below.</p>
     <form className="space-y-4" onSubmit={async e => {
       e.preventDefault(); setBusy(true);
       try { await save({ data: { url, token } }); setToken(""); await qc.invalidateQueries({ queryKey: ["studio-settings"] }); toast.success("Cloud worker saved securely"); }
