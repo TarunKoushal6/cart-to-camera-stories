@@ -29,3 +29,17 @@ describe("shared default worker", () => {
     expect((await resolveWorker(undefined, "k")).url).toBe("https://interstate-boolean-pediatric-associated.trycloudflare.com");
   });
 });
+describe("worker download progress", () => {
+  it("shows size, speed and percent while downloading", async () => {
+    const { progressSummary } = await import("@/lib/cloud-clipper-rules");
+    const s = progressSummary({ stage: "downloading", progress: { downloaded: 512 * 1024 ** 2, total: 1024 ** 3, speed: 5 * 1024 ** 2, eta: 120 } });
+    expect(s?.percent).toBe(50);
+    expect(s?.label).toContain("512 MB of 1.0 GB");
+    expect(s?.label).toContain("5.0 MB/s");
+    expect(s?.label).toContain("2 min left");
+  });
+  it("ignores unknown worker stages instead of failing the job", async () => {
+    const { workerStatusSchema } = await import("@/lib/cloud-clipper-rules");
+    expect(workerStatusSchema.parse({ status: "transcribing", stage: "mystery" }).stage).toBeUndefined();
+  });
+});

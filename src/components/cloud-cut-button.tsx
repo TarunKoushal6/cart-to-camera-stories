@@ -4,12 +4,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cloud, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { startCloudCut, pollCloudCut } from "@/lib/cloud-clipper.functions";
-import { cloudStage } from "@/lib/cloud-clipper-rules";
+import { startCloudCut, pollCloudCut, cloudCutProgress } from "@/lib/cloud-clipper.functions";
+import { cloudStage, progressSummary } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 export function CloudCutButton({ url, sourceId }: { url: string; sourceId?: string }) {
-  const start = useServerFn(startCloudCut), poll = useServerFn(pollCloudCut), qc = useQueryClient();
+  const start = useServerFn(startCloudCut), poll = useServerFn(pollCloudCut), readProgress = useServerFn(cloudCutProgress), qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const { data: jobs = [] } = useQuery({ queryKey: ["cloud-jobs", sourceId], enabled: Boolean(sourceId), refetchInterval: 10000,
     queryFn: async () => {
@@ -19,6 +20,10 @@ export function CloudCutButton({ url, sourceId }: { url: string; sourceId?: stri
       return r.data;
     } });
   const job = jobs[0], active = job && !["ready", "failed"].includes(job.status);
+  const downloading = job?.status === "transcribing";
+  const { data: live } = useQuery({ queryKey: ["cloud-progress", job?.id], enabled: Boolean(job && downloading), refetchInterval: 3000,
+    queryFn: () => readProgress({ data: { jobId: job!.id } }) });
+  const summary = downloading ? progressSummary(live) : null;
   useEffect(() => {
     if (!active) return;
     const interval = setInterval(() => { void refresh(); }, 15000);
@@ -41,6 +46,9 @@ export function CloudCutButton({ url, sourceId }: { url: string; sourceId?: stri
       }}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}Fully Auto Cut with Cloud Worker</Button>
       {active && <Button size="icon" variant="ghost" aria-label="Refresh cloud clipping" title="Refresh cloud clipping" disabled={busy} onClick={refresh}><RefreshCw className="h-4 w-4" /></Button>}
     </div>
-    {job && <p className={`text-xs ${job.status === "failed" ? "text-destructive" : "text-muted-foreground"}`} role="status">{cloudStage(job.status)}{job.error ? ` · ${job.error}` : ""}</p>}
+    {summary ? <div className="space-y-1" role="status">
+      {summary.percent != null ? <Progress value={summary.percent} aria-label="Cloud worker progress" /> : <Progress value={100} className="animate-pulse opacity-50" aria-label="Cloud worker working" />}
+      <p className="text-xs text-muted-foreground tabular-nums">{summary.label}{summary.percent != null ? ` · ${Math.round(summary.percent)}%` : ""}</p>
+    </div> : job && <p className={`text-xs ${job.status === "failed" ? "text-destructive" : "text-muted-foreground"}`} role="status">{cloudStage(job.status)}{job.error ? ` · ${job.error}` : ""}</p>}
   </div>;
 }
