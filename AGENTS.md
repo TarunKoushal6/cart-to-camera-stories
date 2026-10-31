@@ -32,3 +32,4 @@
 - Batch clipping runs in the browser (FFmpeg WASM) per source file, then AI-reviews; approving schedules next-day slots — the Worker cannot render video.
 - Cloud clipping uses a health-checked Cutline v1 FastAPI protocol with an optional pinned OpenShorts Python bridge, owner-bound leased resumable jobs and exact-object signed uploads; personal AI and approval-gated publishing remain in the app, because native OpenShorts APIs do not implement this contract.
 - Batch scheduling keeps approved-but-unscheduled clips retryable and skips existing queued posts; next-day local slots compress for large batches so all clips remain on the promised day.
+- Accounts without a saved cloud worker use the shared DEFAULT_CLOUD_WORKER_URL (optional CLOUD_WORKER_TOKEN secret); worker fetches use redirect:"manual" and reject 3xx — Workers runtime doesn't support redirect:"error".
