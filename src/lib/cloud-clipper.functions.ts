@@ -28,15 +28,13 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
     const youtube = youtubeId(data.url);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
-    const worker = settings?.find(s => s.kind === "cloud_worker");
-    if (!worker?.base_url) throw new Error("Save your Cloud Clipper Worker URL in Settings first.");
     if (!settings?.some(s => s.kind === "ai")) throw new Error("Save your AI endpoint, key and model in Settings first.");
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) throw new Error("Secure credential storage is not configured.");
     let sourceId = data.sourceId;
-    const { decrypt } = await import("./studio-crypto.server");
-    const { checkWorker } = await import("./cloud-clipper.server");
-    await checkWorker(worker.base_url, await decrypt(worker.encrypted_key, secret));
+    const { checkWorker, resolveWorker, callWorker } = await import("./cloud-clipper.server");
+    const worker = await resolveWorker(settings.find(s => s.kind === "cloud_worker"), secret);
+    await checkWorker(worker.url, worker.token);
     if (sourceId) {
       const { data: source } = await context.supabase.from("studio_sources").select("youtube_id").eq("id", sourceId).single();
       if (!source || source.youtube_id !== youtube) throw new Error("Source video not found.");
