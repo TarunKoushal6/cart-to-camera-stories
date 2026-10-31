@@ -1,7 +1,8 @@
 """Cutline protocol v1: download/transcribe, then render scoped signed-upload targets.
 No database/service-role key or personal AI key is needed on this worker.
 """
-import os, json, uuid, secrets, shutil, subprocess, threading, re
+import os, json, uuid, secrets, shutil, subprocess, threading, re, time, logging
+from collections import deque
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -11,6 +12,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, HttpUrl
 from faster_whisper import WhisperModel
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger('cutline')
 ROOT = Path(os.getenv('DATA_DIR', '/tmp/cutline')); ROOT.mkdir(parents=True, exist_ok=True)
 TOKEN = os.getenv('WORKER_TOKEN', '')
 AUTH = HTTPBearer(auto_error=False)
@@ -286,14 +289,14 @@ def start(body: Intake):
         active = sum(1 for p in ROOT.glob('*/state.json') if json.loads(p.read_text()).get('status') in ['transcribing','analyzed','rendering'])
         if active >= 3: raise HTTPException(429, 'Worker queue full')
         d.mkdir(exist_ok=True)
-        (d / 'state.json').write_text(json.dumps({'status':'transcribing','completed':[]}))
+        (d / 'state.json').write_text(json.dumps({'status':'transcribing','stage':'queued','progress':{},'completed':[]}))
     POOL.submit(download, body.id, str(body.url))
     return {'id': str(body.id)}
 
 @app.get('/jobs/{job}', dependencies=[Depends(authorized)])
 def status(job: uuid.UUID):
     s = read(job)
-    return {k: s[k] for k in ['status','duration','cues','completed','error'] if k in s}
+    return {k: s[k] for k in ['status','stage','progress','duration','cues','completed','error'] if k in s}
 
 @app.post('/jobs/{job}/render', dependencies=[Depends(authorized)])
 def begin_render(job: uuid.UUID, body: Render):
