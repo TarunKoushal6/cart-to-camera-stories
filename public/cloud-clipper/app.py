@@ -93,7 +93,8 @@ def explain_download(output):
                 '2) Export cookies.txt from a browser logged into YouTube (Netscape format, e.g. "Get cookies.txt LOCALLY" extension) '
                 'and put it next to app.py, or set YOUTUBE_COOKIES_FILE=/path/cookies.txt. '
                 '3) Or set YOUTUBE_COOKIES_BROWSER=chrome if YouTube is logged in on this machine\'s browser. '
-                'Client spoofing (player_client=android,ios,web) is already on; override with YOUTUBE_EXTRACTOR_ARGS. '
+                'On Windows, Edge cookies are used automatically if nothing else is set. '
+                'Do not force player clients unless needed (YOUTUBE_EXTRACTOR_ARGS); spoofed clients often trigger bot checks. '
                 'Datacenter/VPS IPs may still need cookies or a residential proxy.')
     if 'private video' in s or 'members-only' in s or 'join this channel' in s:
         return 'This video is private or members-only.'
@@ -137,13 +138,17 @@ def cookie_args():
             log.info('Using YouTube cookies from %s', c)
             return ['--cookies', str(c)]
     browser = os.getenv('YOUTUBE_COOKIES_BROWSER', '').strip()
+    if not browser and os.name == 'nt':
+        browser = 'edge'  # Windows default: Edge is always installed.
     if browser:
         log.info('Using YouTube cookies from browser %s', browser)
         return ['--cookies-from-browser', browser]
     return []
 
 def ytdlp(job, url, d):
-    extra = ['--extractor-args', os.getenv('YOUTUBE_EXTRACTOR_ARGS', 'youtube:player_client=android,ios,web')]
+    extra = []
+    extractor = os.getenv('YOUTUBE_EXTRACTOR_ARGS', '').strip()
+    if extractor: extra += ['--extractor-args', extractor]
     extra += cookie_args()
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
