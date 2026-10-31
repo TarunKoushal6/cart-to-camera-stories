@@ -59,3 +59,13 @@ YouTube can reject either downloader. The default image includes Deno for curren
 ## Approval and next-day scheduling
 
 Successful MP4s are stored privately under the owner's clip paths and AI-reviewed. Open the source's review list, select clips, choose Instagram or Facebook, then press Approve & schedule tomorrow. No post is queued without that explicit action. Existing queued clips are skipped on retry; approved but unscheduled clips remain selectable. Slots use your browser's local timezone, start tomorrow at 10:00 and normally run two hours apart; larger batches compress the spacing to keep all 15 clips within tomorrow. Scheduling uses the day you approve, not the day you started processing. YouTube Shorts scheduling remains in the individual clip editor. Connect the intended social account first; live platform acceptance is not guaranteed by a worker render.
+
+## Updating a running worker / troubleshooting downloads
+
+Replace `app.py` with the latest download and restart the worker. Keep yt-dlp current, because YouTube changes often:
+
+```
+pip install -U "yt-dlp[default]"
+```
+
+Install Deno (https://deno.land) on the worker host for YouTube's JavaScript checks; the worker uses it automatically when present. Failed jobs now report the specific reason (bot check, outdated yt-dlp, private/age-restricted video, missing FFmpeg, out of memory) in the app, and the full details print in the worker console. While downloading, the worker reports bytes downloaded, total size, speed and time left; the app shows them as a progress bar.
