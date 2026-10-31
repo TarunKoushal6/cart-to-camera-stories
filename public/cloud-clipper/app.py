@@ -87,7 +87,14 @@ def explain_download(output):
     if 'no such option' in s or 'unrecognized arguments' in s:
         return 'yt-dlp on the worker is outdated. Run: pip install -U "yt-dlp[default]" and restart the worker.'
     if 'sign in to confirm' in s or 'not a bot' in s:
-        return 'YouTube blocked this worker as a bot. Set YOUTUBE_COOKIES_FILE to exported YouTube cookies, or update yt-dlp.'
+        using = 'cookies are loaded but may be expired or logged out' if cookie_args() else 'no cookies are loaded'
+        return ('YouTube blocked this worker as a bot ("Sign in to confirm you are not a bot"); ' + using + '. Fix: '
+                '1) pip install -U "yt-dlp[default]" and install Deno, then restart. '
+                '2) Export cookies.txt from a browser logged into YouTube (Netscape format, e.g. "Get cookies.txt LOCALLY" extension) '
+                'and put it next to app.py, or set YOUTUBE_COOKIES_FILE=/path/cookies.txt. '
+                '3) Or set YOUTUBE_COOKIES_BROWSER=chrome if YouTube is logged in on this machine\'s browser. '
+                'Client spoofing (player_client=android,ios,web) is already on; override with YOUTUBE_EXTRACTOR_ARGS. '
+                'Datacenter/VPS IPs may still need cookies or a residential proxy.')
     if 'private video' in s or 'members-only' in s or 'join this channel' in s:
         return 'This video is private or members-only.'
     if 'confirm your age' in s or 'age-restricted' in s:
@@ -97,7 +104,7 @@ def explain_download(output):
     if 'larger than max-filesize' in s:
         return 'Video is larger than the 2 GB limit at 720p.'
     if 'does not pass filter' in s:
-        return 'Video is longer than the 2 hour limit.'
+        return 'Video is longer than the 4 hour limit.'
     if 'requested format is not available' in s or 'only images are available' in s:
         return 'YouTube gave no downloadable format. Update yt-dlp and install Deno on the worker.'
     if 'ffmpeg' in s and ('not found' in s or 'not installed' in s):
@@ -119,9 +126,25 @@ def num(v):
 
 PROGRESS = 'download:CUTLINE %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s'
 
+def cookie_args():
+    """Cookies priority: YOUTUBE_COOKIES_FILE, then cookies.txt beside app.py or in ROOT, then YOUTUBE_COOKIES_BROWSER."""
+    env_file = os.getenv('YOUTUBE_COOKIES_FILE', '').strip()
+    if env_file:
+        if not Path(env_file).is_file(): log.warning('YOUTUBE_COOKIES_FILE not found: %s', env_file)
+        return ['--cookies', env_file]
+    for c in (Path(__file__).resolve().parent / 'cookies.txt', ROOT / 'cookies.txt'):
+        if c.is_file():
+            log.info('Using YouTube cookies from %s', c)
+            return ['--cookies', str(c)]
+    browser = os.getenv('YOUTUBE_COOKIES_BROWSER', '').strip()
+    if browser:
+        log.info('Using YouTube cookies from browser %s', browser)
+        return ['--cookies-from-browser', browser]
+    return []
+
 def ytdlp(job, url, d):
-    cookie_file = os.getenv('YOUTUBE_COOKIES_FILE', '')
-    extra = ['--cookies', cookie_file] if cookie_file else []
+    extra = ['--extractor-args', os.getenv('YOUTUBE_EXTRACTOR_ARGS', 'youtube:player_client=android,ios,web')]
+    extra += cookie_args()
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
