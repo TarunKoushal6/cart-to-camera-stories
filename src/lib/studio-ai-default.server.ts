@@ -12,9 +12,9 @@ export class AiRequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-/** A personal key falls back only when the provider refused it (bad key, no credit, rate-limited). */
+/** A personal key falls back when the provider refused it (bad key, no credit, rate-limited) or is down (5xx). */
 export function savedKeyUnusable(e: unknown) {
-  return e instanceof AiRequestError && [401, 402, 403, 429].includes(e.status);
+  return e instanceof AiRequestError && ([401, 402, 403, 429].includes(e.status) || e.status >= 500);
 }
 
 /** The hermes key (stored as DEFAULT_AI_KEY_BACKUP) is the primary active shared key; DEFAULT_AI_KEY is the fallback. */
