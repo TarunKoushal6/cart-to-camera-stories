@@ -3,7 +3,7 @@
 - [ ] Test run of gTKS8SAwUzE — blocked: worker queue full (HTTP 429) from old waiting runs; needs publish + run.bat to load the new app.py.
 - [x] Cut AI input for long videos: condensed transcript (~80% smaller on the 2h55m test video) and lighter clip reviews.
 - [x] Royalty-free background music per clip mood with ducking under speech (no voiceover); verified on test renders for all 6 moods.
-- [ ] Check AI clip quality with the condensed transcript — blocked: shared iceyyy.dev keys out of credit (402) / backup 502.
+- [x] Check AI clip quality with the condensed transcript — qwen3.8-flash picked 12 clips from the MrBeast test video.
 - [ ] Live music render on the VPS worker — needs publish + run.bat to fetch the new app.py.
 - [x] Fix build errors from the AI clip-list parsing change and the new test file.
 - [x] Fix build error in auto cut progress panel; simplified dashboard verified in a signed-in screenshot.
@@ -11,7 +11,7 @@
 - [x] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files; signed-in settings/downloads and missing-connection checks passed, plus a 25s vertical-caption render and 9 tests.
 - [x] Simplify dashboard to one "Auto Cut Viral Shorts" card, 5-stage progress with size/speed (MB/s + Mbps)/ETA, and a ready clips grid; Voiceover tab removed from the menu.
 - [x] Real test run: 591 MB download at ~69 MB/s, captions, AI picked 8 clips, worker rendered real 720×1280 30s clips with burned karaoke captions; first clip saved to the library.
-- [ ] Finish the test batch (remaining 6 clips + AI ratings) — blocked: worker must run the new app.py (Windows file-lock fix) and the shared AI keys need credit (main key out of balance, backup returns 502).
+- [ ] Finish the gTKS8SAwUzE test batch — 6 of 12 vertical captioned clips saved and verified; rest keep processing while the dashboard is open.
 - [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
@@ -22,7 +22,7 @@
 - [ ] Verify signed-in voice generation/export and personal-AI critique persistence — requesting user has no matching auth account; requires preview sign-in and a saved personal AI key. Hosted Edge WebSocket wrapper remains unverified.
 - [ ] Verify custom endpoint model scanning and analysis with a real endpoint key — blocked on a user-supplied endpoint.
 - [x] Add custom Google OAuth, YouTube upload/scheduling metadata, processing polling and views/likes/comments.
-- [ ] Verify live Google consent, Shorts uploads, scheduled release and YouTube counts — Google OAuth credentials were skipped; requires credentials and a connected channel.
+- [ ] Verify live Google consent, Shorts uploads and YouTube counts — OAuth credentials saved; waits on the user adding redirect URIs in Google Cloud and connecting a channel.
 - [x] Pivot intake to YouTube metadata and free captions with transcript fallback.
 - [x] Add encrypted personal provider settings and 20–30 second segment analysis.
 - [x] Add local vertical cropping and burned-in karaoke captions.
