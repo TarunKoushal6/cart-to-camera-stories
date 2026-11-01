@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Download, Gauge, Loader2, Music, RefreshCw, Timer, Zap } from "lucide-react";
+import { Check, Cloud, Download, Gauge, Loader2, Music, RefreshCw, Square, Timer, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { startCloudCut, pollCloudCut, cloudCutProgress } from "@/lib/cloud-clipper.functions";
-import { CLOUD_STEPS, cloudJobProgress, downloadStats, MUSIC_MODES, type MusicMode } from "@/lib/cloud-clipper-rules";
+import { startCloudCut, pollCloudCut, cloudCutProgress, cancelCloudCut } from "@/lib/cloud-clipper.functions";
+import { CLOUD_STEPS, cloudJobProgress, downloadStats, isStoppedJob, MUSIC_MODES, type MusicMode } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -14,7 +14,7 @@ const ACTIVE = ["transcribing", "analyzing", "rendering", "finalizing"];
 
 /** Starts cloud jobs and tracks the newest one (for a video, or the latest active job). */
 function useCloudCut(sourceId?: string) {
-  const start = useServerFn(startCloudCut), poll = useServerFn(pollCloudCut), readProgress = useServerFn(cloudCutProgress), qc = useQueryClient();
+  const start = useServerFn(startCloudCut), poll = useServerFn(pollCloudCut), readProgress = useServerFn(cloudCutProgress), cancel = useServerFn(cancelCloudCut), qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [currentSourceId, setCurrentSourceId] = useState<string | null>(sourceId ?? null);
@@ -67,14 +67,31 @@ function useCloudCut(sourceId?: string) {
     finally { setBusy(false); }
   }
 
-  return { job, live, active, busy, begin, refresh: () => job && advance(job.id, job.source_id, true) };
+  const [stopping, setStopping] = useState(false);
+  async function stop() {
+    if (!job || !window.confirm("Stop this auto cut? Clips already saved stay in your library.")) return;
+    setStopping(true);
+    try {
+      await cancel({ data: { jobId: job.id } });
+      setCurrentJobId(job.id); // keep showing this run as "Stopped" instead of hiding it
+      await qc.invalidateQueries({ queryKey: ["cloud-jobs"] });
+      toast.success("Auto cut stopped");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't stop auto cut"); }
+    finally { setStopping(false); }
+  }
+
+  return { job, live, active, busy, stopping, begin, stop, refresh: () => job && advance(job.id, job.source_id, true) };
 }
 
 type CloudState = ReturnType<typeof useCloudCut>;
 
 function CloudProgress({ state }: { state: CloudState }) {
-  const { job, live, active, busy, refresh } = state;
+  const { job, live, active, busy, stopping, stop, refresh } = state;
   if (!job) return null;
+  if (isStoppedJob(job.status, job.error)) return <div className="rounded-lg border border-border bg-background/60 p-4" role="status">
+    <p className="text-sm font-medium">Auto cut stopped</p>
+    <p className="text-xs text-muted-foreground mt-1">{job.error}</p>
+  </div>;
   const view = cloudJobProgress(job.status, live);
   const dl = downloadStats(live);
   if (job.status === "failed") return <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4" role="status">
@@ -98,6 +115,9 @@ function CloudProgress({ state }: { state: CloudState }) {
       <p className="font-medium text-sm">{view.label}</p>
       <div className="flex items-center gap-2">
         {view.percent != null && <span className="font-display text-2xl font-bold tabular-nums text-primary">{Math.round(view.percent)}%</span>}
+        {active && <Button size="sm" variant="outline" disabled={stopping} onClick={() => stop()} className="text-destructive border-destructive/40 hover:bg-destructive/10">
+          {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}Stop
+        </Button>}
         {active && <Button size="icon" variant="ghost" aria-label="Refresh progress" title="Refresh progress" disabled={busy} onClick={() => refresh()}><RefreshCw className="h-4 w-4" /></Button>}
       </div>
     </div>

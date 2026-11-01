@@ -98,6 +98,9 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
   return null;
 }
 export const CLOUD_STEPS = ["Download video", "Captions", "AI hook selection", "9:16 vertical cut & burn captions", "Ready"] as const;
+/** Error text for a job the owner stopped; shown as a neutral "Stopped" state, not a failure. */
+export const STOPPED_MESSAGE = "Stopped by you. Clips already saved stay in your library.";
+export const isStoppedJob = (status: string, error?: string | null) => status === "failed" && error === STOPPED_MESSAGE;
 export type LiveCloudProgress = (WorkerProgress & { rendered?: number; total?: number }) | null | undefined;
 /** Current step (index into CLOUD_STEPS), detail line and percent for a cloud job. */
 export function cloudJobProgress(status: string, live: LiveCloudProgress): { step: number; label: string; detail: string | null; percent: number | null } {
@@ -118,5 +121,6 @@ export function cloudJobProgress(status: string, live: LiveCloudProgress): { ste
 /** Plain-language reason for a failed worker HTTP response. */
 export function workerHttpError(status: number) {
   if (status === 530) return "Cloud worker is offline (HTTP 530): the Cloudflare tunnel or the worker server (Uvicorn) behind it is stopped or disconnected. Restart the worker and its tunnel, then retry.";
+  if (status === 429) return "Cloud worker is busy (HTTP 429): its queue is full of other runs. Stop older runs, or update and restart the worker (older worker versions keep finished-download runs in the queue), then retry.";
   return `Cloud worker request failed (${status}). Check its URL, token and availability.`;
 }

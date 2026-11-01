@@ -1,3 +1,6 @@
+- [x] Stop button for auto cut runs (app + worker cancel); stuck old runs stopped; signed-in Stop click verified.
+- [x] Per-account isolation: database rules already separate accounts; fixed the browser keeping the previous account's videos/clips after switching accounts.
+- [ ] Test run of gTKS8SAwUzE — blocked: worker queue full (HTTP 429) from old waiting runs; needs publish + run.bat to load the new app.py.
 - [x] Cut AI input for long videos: condensed transcript (~80% smaller on the 2h55m test video) and lighter clip reviews.
 - [x] Royalty-free background music per clip mood with ducking under speech (no voiceover); verified on test renders for all 6 moods.
 - [ ] Check AI clip quality with the condensed transcript — blocked: shared iceyyy.dev keys out of credit (402) / backup 502.

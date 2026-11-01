@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { workerUrl, workerProgressSchema, musicModeSchema } from "./cloud-clipper-rules";
+import { workerUrl, workerProgressSchema, musicModeSchema, STOPPED_MESSAGE } from "./cloud-clipper-rules";
 import { youtubeId } from "./studio-rules";
 
 export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
@@ -71,10 +71,37 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
         id: jobId, url: `https://www.youtube.com/watch?v=${youtube}`,
       });
     } catch (e) {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Worker could not start. Check Settings and retry." }).eq("id", jobId);
+      const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
+      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: `Worker could not start: ${reason}` }).eq("id", jobId);
       throw e;
     }
     return { id: jobId, sourceId };
+  });
+
+/** Owner-only stop: marks the job stopped, then asks the worker to kill its download/render (best effort). */
+export const cancelCloudCut = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(d => z.object({ jobId: z.string().uuid().optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    let q = context.supabase.from("studio_cloud_jobs").select("id,worker_url,worker_job_id")
+      .eq("user_id", context.userId).not("status", "in", "(ready,failed)");
+    if (data.jobId) q = q.eq("id", data.jobId);
+    const { data: jobs, error } = await q;
+    if (error) throw new Error("Couldn't load your clipping jobs.");
+    if (!jobs?.length) return { stopped: 0 };
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const stop = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: STOPPED_MESSAGE, processing_token: null, processing_until: null })
+      .in("id", jobs.map(j => j.id)).eq("user_id", context.userId).not("status", "in", "(ready,failed)");
+    if (stop.error) throw new Error("Couldn't stop the clipping job.");
+    const secret = process.env["STUDIO_ENCRYPTION_KEY"];
+    if (secret) {
+      const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId).eq("kind", "cloud_worker");
+      const { callWorker, resolveWorker } = await import("./cloud-clipper.server");
+      const worker = await resolveWorker(settings?.[0], secret).catch(() => null);
+      // Older workers have no cancel endpoint; the app-side stop still holds because finished jobs are never advanced.
+      await Promise.all(jobs.filter(j => worker && j.worker_url === worker.url)
+        .map(j => callWorker(j.worker_url, worker!.token, `/jobs/${j.worker_job_id}/cancel`, {}).catch(() => null)));
+    }
+    return { stopped: jobs.length };
   });
 
 export const pollCloudCut = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])

@@ -120,6 +120,20 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // Cached videos/clips belong to one account: drop them whenever the signed-in user changes.
+  useEffect(() => {
+    let lastUser: string | null | undefined;
+    let sub: { unsubscribe: () => void } | undefined;
+    void import("@/integrations/supabase/client").then(({ supabase }) => {
+      sub = supabase.auth.onAuthStateChange((_e, s) => {
+        const id = s?.user.id ?? null;
+        if (lastUser !== undefined && lastUser !== id) queryClient.clear();
+        lastUser = id;
+      }).data.subscription;
+    });
+    return () => sub?.unsubscribe();
+  }, [queryClient]);
+
 
   return (
     <QueryClientProvider client={queryClient}>

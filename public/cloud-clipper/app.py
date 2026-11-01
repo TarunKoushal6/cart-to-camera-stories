@@ -22,6 +22,11 @@ POOL = ThreadPoolExecutor(max_workers=1)
 LOCK = threading.RLock()  # re-entrant: read() is also called while holding it
 MODEL_LOCK = threading.Lock()
 MODEL = None
+# Stop support: cancelled job ids, their running child processes, and the job the current pool thread works on.
+CANCELLED = set()
+PROCS = {}
+CURRENT = threading.local()
+STOPPED = 'Stopped by you. Clips already saved stay in your library.'
 ENGINE = os.getenv('CLIPPER_ENGINE', 'cutline')
 if ENGINE not in ('cutline', 'openshorts'):
     raise RuntimeError('CLIPPER_ENGINE must be cutline or openshorts')
@@ -95,21 +100,53 @@ def write(job, **fields):
 class StepError(RuntimeError):
     """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
 
+class Stopped(StepError):
+    """The owner pressed Stop in the app."""
+
+def cancelled(job): return str(job) in CANCELLED
+
+def check_stop(job):
+    if cancelled(job): raise Stopped(STOPPED)
+
+def track(p):
+    job = getattr(CURRENT, 'job', None)
+    if job: PROCS.setdefault(str(job), set()).add(p)
+    return p
+
+def untrack(p):
+    job = getattr(CURRENT, 'job', None)
+    if job: PROCS.get(str(job), set()).discard(p)
+
+def stop_cleanup(job):
+    d = folder(job)
+    for f in list(d.glob('source.*')) + [d / 'audio.wav'] + list(d.glob('*.mp4')) + list(d.glob('*.part')):
+        try: f.unlink()
+        except OSError: pass
+    write(job, status='failed', stage='stopped', progress={}, error=STOPPED)
+
 def run(args, timeout=14400, failure='Media command failed', cwd=None):
     # Logs never contain signed upload URLs, bearer tokens or provider keys.
+    job = getattr(CURRENT, 'job', None)
+    if job: check_stop(job)
     try:
-        r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, cwd=cwd)
+        p = track(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd))
     except FileNotFoundError:
         raise StepError(f'{args[0]} is not installed on the worker. Install FFmpeg/yt-dlp and restart.')
+    try:
+        out, errb = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        p.kill(); p.communicate()
         raise StepError(f'{failure}: timed out.')
-    if r.returncode:
-        err = r.stderr.decode(errors='replace')
+    finally:
+        untrack(p)
+    if job: check_stop(job)
+    if p.returncode:
+        err = errb.decode(errors='replace')
         log.error('%s failed: %s', args[0], err[-2000:])
         # FFmpeg stderr names only local files; yt-dlp output is summarised elsewhere.
         detail = f"\nFFmpeg said: {err.strip()[-600:]}" if args[0] == 'ffmpeg' else ''
         raise StepError(f'{failure}. See worker console for details.{detail}')
-    return r.stdout.decode()
+    return out.decode()
 
 def explain_download(output):
     s = output.lower()
@@ -250,11 +287,12 @@ def ytdlp_attempt(job, url, d, cookies):
             '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', '--merge-output-format', 'mp4',
             '-o', str(d / 'source.%(ext)s'), url]
     try:
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+        p = track(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace'))
     except FileNotFoundError:
         raise StepError('yt-dlp is not installed on the worker. Run: pip install -U "yt-dlp[default]".')
     tail = deque(maxlen=200); base = 0.0; prev = 0.0; prev_total = None; part = 1; last = 0.0; began = time.time()
     for line in p.stdout:
+        if cancelled(job): p.kill(); p.wait(); untrack(p); check_stop(job)
         if time.time() - began > 14400: p.kill(); raise StepError('Download took longer than 4 hours.')
         if not line.startswith('CUTLINE '):
             tail.append(line.rstrip()); continue
@@ -269,7 +307,8 @@ def ytdlp_attempt(job, url, d, cookies):
             last = now
             write(job, stage='downloading', progress={'downloaded': base + dl, 'total': base + total if total else None,
                                                       'speed': speed, 'eta': eta, 'part': part})
-    code = p.wait()
+    code = p.wait(); untrack(p)
+    check_stop(job)
     source = next((f for f in d.glob('source.*') if f.suffix in ['.mp4', '.webm', '.mkv']), None)
     return code, source, '\n'.join(tail)
 
@@ -397,7 +436,9 @@ def youtube_subtitles(job, url, d):
     return cues
 
 def download(job, url):
+    CURRENT.job = job
     try:
+        check_stop(job)
         d = folder(job)
         sub_cues = youtube_subtitles(job, url, d) if ENGINE == 'cutline' else None
         write(job, stage='downloading', progress={})
@@ -438,15 +479,25 @@ def download(job, url):
                                                   beam_size=int(os.getenv('WHISPER_BEAM_SIZE', '1')))
                 cues = []; last = 0.0; total = info.duration or duration
                 for s in segments:
+                    check_stop(job)
                     for w in s.words or []:
                         if w.word.strip() and w.end > w.start:
                             cues.append({'start': w.start, 'end': w.end, 'text': w.word.strip()})
                     if time.time() - last >= 2:
                         last = time.time(); write(job, progress={'percent': min(100, round(s.end / total * 100, 1))})
+        check_stop(job)
         if not cues: raise StepError('No speech found in this video, so no captions could be made.')
         if len(cues) > 75000: raise StepError('Transcript is too long (over 75,000 words).')
         write(job, status='analyzed', stage='analyzed', progress={}, duration=duration, cues=cues, source=str(source))
         audio.unlink(missing_ok=True)
+    except Exception as e:
+        if not cancelled(job): return fail_download(job, e)
+        log.info('Job %s stopped by owner', job); stop_cleanup(job)
+    finally:
+        CURRENT.job = None
+
+def fail_download(job, e):
+    try: raise e
     except StepError as e:
         log.error('Job %s failed: %s', job, e)
         write(job, status='failed', error=f'{e}\n\n{traceback.format_exc()}')
@@ -553,9 +604,19 @@ def music_mix_args(duration, volume):
             '-map', '0:v', '-map', '[a]']
 
 def render(job, targets, music=None):
+    CURRENT.job = job
     try:
+        _render(job, targets, music)
+    except Exception as e:
+        if not cancelled(job): return fail_render(job, e)
+        log.info('Render %s stopped by owner', job); stop_cleanup(job)
+    finally:
+        CURRENT.job = None
+
+def _render(job, targets, music=None):
         state = read(job); source = Path(state['source']); d = folder(job); completed = []
         for t in targets:
+            check_stop(job)
             s = t.segment
             if not 20 <= s.end-s.start <= 30 or s.end > state['duration']: raise RuntimeError('Invalid clip window')
             ass = d / f'{t.id}.ass'; output = d / f'{t.id}.mp4'
@@ -605,6 +666,9 @@ def render(job, targets, music=None):
                 cut.unlink(missing_ok=True); vertical.unlink(missing_ok=True)
         write(job, status='complete', completed=completed)
         source.unlink(missing_ok=True)
+
+def fail_render(job, e):
+    try: raise e
     except StepError as e:
         log.error('Render %s failed: %s', job, e)
         write(job, status='failed', error=f'{e} Saved clips remain available.\n\n{traceback.format_exc()}')
@@ -624,7 +688,8 @@ def start(body: Intake):
     d = folder(body.id)
     with LOCK:
         if (d / 'state.json').exists(): return {'id': str(body.id)}
-        active = sum(1 for p in ROOT.glob('*/state.json') if read_state(p).get('status') in ['transcribing','analyzed','rendering'])
+        # Only running work counts: 'analyzed' jobs just wait for the app's AI and use no CPU, so they never block new runs.
+        active = sum(1 for p in ROOT.glob('*/state.json') if read_state(p).get('status') in ['transcribing','rendering'] and p.parent.name not in CANCELLED)
         if active >= 3: raise HTTPException(429, 'Worker queue full')
         d.mkdir(exist_ok=True)
         save_state(d / 'state.json', {'status':'transcribing','stage':'queued','progress':{},'completed':[]})
@@ -645,3 +710,20 @@ def begin_render(job: uuid.UUID, body: Render):
         save_state(folder(job) / 'state.json', {**s, 'status': 'rendering'})
     POOL.submit(render, job, body.targets, body.music)
     return {'accepted': True}
+
+@app.post('/jobs/{job}/cancel', dependencies=[Depends(authorized)])
+def cancel(job: uuid.UUID):
+    """Stops a queued/running job: kills its yt-dlp/FFmpeg processes and frees its queue slot."""
+    with LOCK:
+        s = read(job)
+        if s.get('status') in ['complete', 'failed']: return {'stopped': False, 'status': s['status']}
+        CANCELLED.add(str(job))
+        for p in list(PROCS.get(str(job), ())):
+            try: p.kill()
+            except OSError: pass
+        # Jobs waiting for the AI ('analyzed') or still queued have no running thread to clean up.
+        save_state(folder(job) / 'state.json', {**s, 'status': 'failed', 'stage': 'stopped', 'progress': {}, 'error': STOPPED})
+    if s.get('status') == 'analyzed':
+        try: stop_cleanup(job)
+        except OSError: pass
+    return {'stopped': True}
