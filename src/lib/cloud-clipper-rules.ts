@@ -82,10 +82,11 @@ export function cloudJobProgress(status: string, live: LiveCloudProgress): { ste
     return { step: 4, label: CLOUD_STEPS[4], detail: total ? `${done} of ${total} clips saved` : null, percent: total ? (done / total) * 100 : null };
   }
   const stage = live?.stage, summary = progressSummary(live);
-  if (!stage || stage === "queued") return { step: 0, label: CLOUD_STEPS[0], detail: summary?.label ?? null, percent: null };
-  if (stage === "downloading") return { step: 1, label: CLOUD_STEPS[1], detail: summary?.label ?? null, percent: summary?.percent ?? null };
+  const detail = summary ? summary.label.replace(/^Downloading video · /, "").replace(/ · \d+%$/, "") : null;
+  if (!stage || stage === "queued") return { step: 0, label: CLOUD_STEPS[0], detail, percent: null };
+  if (stage === "downloading") return { step: 1, label: CLOUD_STEPS[1], detail, percent: summary?.percent ?? null };
   if (stage === "analyzed") return { step: 3, label: CLOUD_STEPS[3], detail: null, percent: null };
-  return { step: 2, label: CLOUD_STEPS[2], detail: summary?.label ?? null, percent: stage === "transcribing" ? summary?.percent ?? null : null };
+  return { step: 2, label: CLOUD_STEPS[2], detail, percent: stage === "transcribing" ? summary?.percent ?? null : null };
 }
 /** Plain-language reason for a failed worker HTTP response. */
 export function workerHttpError(status: number) {
