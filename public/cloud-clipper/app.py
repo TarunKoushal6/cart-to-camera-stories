@@ -259,9 +259,117 @@ def ytdlp(job, url, d):
         raise StepError(explain_download(output))
     return source
 
+# ---- YouTube subtitles fast-path: skips CPU transcription when captions already exist ----
+SUB_LANGS = os.getenv('YOUTUBE_SUB_LANGS', 'en,hi,en-orig,hi-orig')
+TIME_RE = re.compile(r'(\d+:)?(\d{1,2}):(\d{2})[.,](\d{3})')
+CUE_RE = re.compile(r'^\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})')
+INLINE_RE = re.compile(r'<((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})>')
+TAG_RE = re.compile(r'</?[^>]+>')
+
+def secs(t):
+    m = TIME_RE.match(t.strip())
+    if not m: return None
+    h = int(m.group(1)[:-1]) if m.group(1) else 0
+    return h * 3600 + int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 1000
+
+def clean_words(text):
+    import html
+    return [w for w in html.unescape(TAG_RE.sub('', text)).replace('\u200b', '').split() if w and not re.fullmatch(r'\[.*\]|\(.*\)', w)]
+
+def parse_subtitles(text):
+    """Parse VTT/SRT into word cues. YouTube auto-captions carry per-word <00:00:01.230> stamps (karaoke-ready);
+    plain cues get word times spread evenly. Rolling duplicate lines in auto-captions are dropped."""
+    blocks, cur = [], None
+    for line in text.replace('\r', '').split('\n'):
+        m = CUE_RE.match(line)
+        if m:
+            cur = [secs(m.group(1)), secs(m.group(2)), []]; blocks.append(cur); continue
+        if cur is not None:
+            if not line.strip(): cur = None
+            else: cur[2].append(line)
+    timed = any(INLINE_RE.search(l) for b in blocks for l in b[2])
+    cues, prev_text = [], None
+    for start, end, lines in blocks:
+        if start is None or end is None or end <= start: continue
+        if timed:
+            lines = [l for l in lines if INLINE_RE.search(l)]
+            if not lines: continue  # rolling repeat of the previous line
+            for line in lines:
+                parts = INLINE_RE.split(line)  # text, time, text, time, text...
+                pieces = [(start, parts[0])] + [(secs(parts[i]), parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+                for j, (t, chunk) in enumerate(pieces):
+                    words = clean_words(chunk)
+                    if not words or t is None: continue
+                    nxt = pieces[j + 1][0] if j + 1 < len(pieces) and pieces[j + 1][0] else end
+                    nxt = max(nxt, t + 0.05)
+                    step = (nxt - t) / len(words)
+                    for k, w in enumerate(words):
+                        cues.append({'start': round(t + k * step, 3), 'end': round(t + (k + 1) * step, 3), 'text': w})
+        else:
+            joined = ' '.join(lines)
+            if re.fullmatch(r'\d+', joined.strip()): continue
+            if joined == prev_text: continue
+            prev_text = joined
+            words = clean_words(joined)
+            if not words: continue
+            step = (end - start) / len(words)
+            for k, w in enumerate(words):
+                cues.append({'start': round(start + k * step, 3), 'end': round(start + (k + 1) * step, 3), 'text': w})
+    cues.sort(key=lambda c: c['start'])
+    out = []
+    for c in cues:  # drop exact duplicates produced by overlapping cues
+        if out and abs(out[-1]['start'] - c['start']) < 0.01 and out[-1]['text'] == c['text']: continue
+        out.append(c)
+    return out
+
+def pick_subtitle(files):
+    """Prefer manual subs (no '-orig'/auto marker needed), original-language auto-captions, then SUB_LANGS order."""
+    order = [l.strip() for l in SUB_LANGS.split(',') if l.strip()]
+    def lang(f): return f.name[len('subs.'):].rsplit('.', 1)[0]
+    def rank(f):
+        l = lang(f)
+        return (0 if l.endswith('-orig') else 1, order.index(l) if l in order else len(order))
+    return sorted(files, key=rank)[0] if files else None
+
+def youtube_subtitles(job, url, d):
+    """Return word cues from existing YouTube captions, or None. Never fails the job."""
+    if os.getenv('YOUTUBE_SUBTITLES', '1').lower() in ('0', 'off', 'false', 'no'): return None
+    write(job, stage='fetching_subtitles', progress={})
+    for f in d.glob('subs.*'):
+        try: f.unlink()
+        except OSError: pass
+    def attempt(cookies):
+        args = ['yt-dlp', '--no-playlist', '--skip-download', '--write-sub', '--write-auto-sub',
+                '--sub-lang', SUB_LANGS, '--sub-format', 'vtt/srt/best', *extractor_args(cookies), *cookies,
+                '-o', str(d / 'subs.%(ext)s'), url]
+        try:
+            r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180, text=True, errors='replace')
+            return r.returncode, r.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            return 1, str(e)
+    cookies = cookie_args()
+    code, out = attempt(cookies)
+    files = [f for f in d.glob('subs.*') if f.suffix in ('.vtt', '.srt')]
+    if not files and cookies and is_cookie_error(out):
+        code, out = attempt([])
+        files = [f for f in d.glob('subs.*') if f.suffix in ('.vtt', '.srt')]
+    best = pick_subtitle(files)
+    if not best:
+        log.info('No YouTube subtitles found (%s); will transcribe audio', out.strip().splitlines()[-1][:200] if out.strip() else code)
+        return None
+    try:
+        cues = parse_subtitles(best.read_text(encoding='utf-8', errors='replace'))
+    except Exception:
+        log.exception('Could not parse subtitles %s', best.name); return None
+    if len(cues) < 20:
+        log.info('Subtitles %s too short (%d words); will transcribe audio', best.name, len(cues)); return None
+    log.info('Using YouTube subtitles %s (%d words) - skipping transcription', best.name, len(cues))
+    return cues
+
 def download(job, url):
     try:
         d = folder(job)
+        sub_cues = youtube_subtitles(job, url, d) if ENGINE == 'cutline' else None
         write(job, stage='downloading', progress={})
         if ENGINE == 'openshorts':
             from openshorts_adapter import download_source
@@ -276,8 +384,14 @@ def download(job, url):
         duration = float(probe['format']['duration'])
         if not 20 <= duration <= 14400: raise StepError('Supported duration is 20 seconds to 4 hours')
         audio = d / 'audio.wav'
-        run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
-        if ENGINE == 'openshorts':
+        if sub_cues:
+            write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size, 'subtitles': True})
+            cues = [c for c in sub_cues if c['start'] < duration]
+        else:
+            run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
+        if sub_cues:
+            pass
+        elif ENGINE == 'openshorts':
             write(job, stage='transcribing', progress={})
             from openshorts_adapter import transcribe_source
             cues = transcribe_source(source)
@@ -286,12 +400,14 @@ def download(job, url):
             with MODEL_LOCK:
                 if MODEL is None:
                     write(job, stage='loading_model', progress={})
-                    try: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8')
+                    try: MODEL = WhisperModel(os.getenv('WHISPER_MODEL', 'base'), device='cpu', compute_type='int8',
+                                                  cpu_threads=int(os.getenv('WHISPER_THREADS') or os.cpu_count() or 8))
                     except Exception:
                         log.exception('Whisper model load failed')
                         raise StepError('Could not load the Whisper model. The first run needs internet access and about 1 GB free RAM.')
                 write(job, stage='transcribing', progress={'percent': 0})
-                segments, info = MODEL.transcribe(str(audio), word_timestamps=True, vad_filter=True)
+                segments, info = MODEL.transcribe(str(audio), word_timestamps=True, vad_filter=True,
+                                                  beam_size=int(os.getenv('WHISPER_BEAM_SIZE', '1')))
                 cues = []; last = 0.0; total = info.duration or duration
                 for s in segments:
                     for w in s.words or []:
