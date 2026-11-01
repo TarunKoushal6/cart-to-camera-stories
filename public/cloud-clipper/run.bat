@@ -6,6 +6,8 @@ REM  2. Uses C:\cutline as the worker folder
 REM  3. Downloads the latest app.py (keeps the old copy if the download fails)
 REM  4. Keeps an existing cookies.txt, otherwise tries exporting Edge cookies
 REM  5. Starts the worker on port 8000
+REM     - Uses existing YouTube captions first (seconds instead of a long
+REM       transcription); falls back to Whisper on ALL CPU cores, beam size 1
 REM
 REM  WARNING: step 1 closes EVERY msedge.exe and python.exe on this machine.
 REM ==========================================================================
@@ -14,6 +16,17 @@ setlocal EnableExtensions
 set "WORKDIR=C:\cutline"
 set "APP_URL=https://cart-to-camera-stories.lovable.app/cloud-clipper/app.py"
 set "PORT=8000"
+
+REM Speed settings (already-set environment values win).
+REM YOUTUBE_SUBTITLES=1 : use YouTube's own/auto captions when available, skip transcription
+REM YOUTUBE_SUB_LANGS   : caption languages to try (original-language "-orig" tracks preferred)
+REM WHISPER_THREADS     : CPU threads for fallback transcription (default: every core)
+REM WHISPER_BEAM_SIZE=1 : greedy decoding, roughly 4x faster on CPU
+if not defined YOUTUBE_SUBTITLES set "YOUTUBE_SUBTITLES=1"
+if not defined YOUTUBE_SUB_LANGS set "YOUTUBE_SUB_LANGS=en,hi,en-orig,hi-orig"
+if not defined WHISPER_THREADS set "WHISPER_THREADS=%NUMBER_OF_PROCESSORS%"
+if not defined WHISPER_THREADS set "WHISPER_THREADS=8"
+if not defined WHISPER_BEAM_SIZE set "WHISPER_BEAM_SIZE=1"
 
 echo.
 echo [1/5] Stopping Edge and old Python worker processes...
@@ -79,12 +92,13 @@ REM Cookies are optional: the worker uses bot-resistant player clients and
 REM retries without cookies if a cookie file is rejected.
 
 echo [5/5] Starting the worker on port %PORT% ...  (press Ctrl+C to stop)
+echo        Captions fast-path: %YOUTUBE_SUBTITLES%  ^|  Whisper threads: %WHISPER_THREADS%  ^|  Beam size: %WHISPER_BEAM_SIZE%
 echo.
 python -m uvicorn app:app --port %PORT%
 if errorlevel 1 (
   echo.
   echo ERROR: The worker stopped with an error. If it says "No module named uvicorn", run:
-  echo    python -m pip install -U fastapi uvicorn requests "yt-dlp[default]"
+  echo    python -m pip install -U fastapi uvicorn requests faster-whisper "yt-dlp[default]"
   goto :fail
 )
 endlocal
