@@ -4,6 +4,13 @@ import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 import { AiRequestError } from "./studio-ai-default.server";
 
+/** OpenAI-style request body. Custom gateways often reject strict JSON mode, so they rely on the prompt + tolerant parsing. */
+export function chatBody(provider: Provider, model: string, prompt: string, maxTokens: number) {
+  const body: Record<string, unknown> = { model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] };
+  if (provider !== "custom") body.response_format = { type: "json_object" };
+  return body;
+}
+
 /** Lists the models a key can use, so the settings page can offer a dropdown. */
 export async function fetchModels(provider: Provider, key: string, baseUrl?: string | null): Promise<string[]> {
   let endpoint: string, headers: Record<string, string>;
@@ -48,8 +55,8 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   } else {
     endpoint = `${providerBaseUrl(provider, baseUrl)}/chat/completions`;
     headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
-    // Thinking models (e.g. gemini-2.5) spend output tokens on reasoning; a low default cut the JSON off mid-list.
-    body = { model, max_tokens: 16000, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } };
+    // Thinking models spend output tokens on reasoning, so keep a generous cap; custom gateways time out above ~8k.
+    body = chatBody(provider, model, prompt, provider === "custom" ? 8000 : 16000);
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(240000) });
   // Do not include provider bodies: some services can echo credentials in errors.
@@ -69,7 +76,7 @@ export async function reviewWithKey(provider:Provider,model:string,key:string,ba
   let endpoint:string,headers:Record<string,string>,body:object;
   if(provider==="gemini"){endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;headers={"Content-Type":"application/json","x-goog-api-key":key};body={contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}};}
   else if(provider==="anthropic"){endpoint="https://api.anthropic.com/v1/messages";headers={"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"};body={model,max_tokens:1800,messages:[{role:"user",content:prompt}]};}
-  else{endpoint=`${providerBaseUrl(provider,baseUrl)}/chat/completions`;headers={"Content-Type":"application/json",Authorization:`Bearer ${key}`};body={model,messages:[{role:"user",content:prompt}],response_format:{type:"json_object"}};}
+  else{endpoint=`${providerBaseUrl(provider,baseUrl)}/chat/completions`;headers={"Content-Type":"application/json",Authorization:`Bearer ${key}`};body=chatBody(provider,model,prompt,4000);}
   const r=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
   if(!r.ok)throw new AiRequestError(`${provider} rejected the clip review (${r.status}). Check your saved model, key and quota.`,r.status);
   const result=await r.json() as {choices?:{message:{content:string}}[];content?:{text?:string}[];candidates?:{content:{parts:{text?:string}[]}}[]};
@@ -94,7 +101,7 @@ export async function writeClipText(provider: Provider, model: string, key: stri
   } else {
     endpoint = `${providerBaseUrl(provider, baseUrl)}/chat/completions`;
     headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
-    body = { model, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } };
+    body = chatBody(provider, model, prompt, 4000);
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
   if (!r.ok) throw new AiRequestError(`${provider} rejected the request (${r.status}). Check your key and model in Settings.`, r.status);

@@ -8,9 +8,9 @@ describe("shared default AI", () => {
   beforeEach(() => { process.env["DEFAULT_AI_KEY_BACKUP"] = "primary"; process.env["DEFAULT_AI_KEY"] = "backup"; });
   afterEach(() => { process.env = { ...env }; });
 
-  it("uses the hermes key (DEFAULT_AI_KEY_BACKUP) first with gemini-2.5-flash on iceyyy", async () => {
+  it("uses the hermes key (DEFAULT_AI_KEY_BACKUP) first with qwen3.8-flash on iceyyy", async () => {
     const used = await withAi(null, SECRET, async c => c);
-    expect(used).toMatchObject({ key: "primary", model: "gemini-2.5-flash", baseUrl: "https://api.iceyyy.dev/v1", shared: true });
+    expect(used).toMatchObject({ key: "primary", model: "qwen3.8-flash", baseUrl: "https://api.iceyyy.dev/v1", shared: true });
     expect(DEFAULT_AI.provider).toBe("custom");
   });
 
