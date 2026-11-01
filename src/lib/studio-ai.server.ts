@@ -1,4 +1,4 @@
-import { segmentSchema, providerBaseUrl, compactTranscript, transcriptEnd, type Provider, type Cue } from "./studio-rules";
+import { parseAiSegments, providerBaseUrl, compactTranscript, transcriptEnd, type Provider, type Cue } from "./studio-rules";
 import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 import { AiRequestError } from "./studio-ai-default.server";
@@ -31,20 +31,21 @@ export async function fetchModels(provider: Provider, key: string, baseUrl?: str
 }
 
 export async function analyzeWithKey(provider: Provider, model: string, key: string, cues: Cue[], baseUrl?: string | null, structure?: {title:string;duration:number;outline:string}) {
-  const prompt = `Find ALL distinct high-retention (up to 15), self-contained viral hooks. Each segment MUST be 20–30 seconds, within the supplied duration. Do not invent words. Score potential 0–100, not a guaranteed prediction. ${cues.length?"The transcript is one line per phrase as '[MM:SS] text' (or '[H:MM:SS] text' past one hour); each stamp is when that phrase starts. Use these timestamps, and return start/end as plain seconds (e.g. [1:02:05] = 3725).":"You have NOT watched or heard this video. Suggest provisional candidate windows based ONLY on the title, duration and user outline. Every reason must start with 'Structure-only candidate: ' and disclose that speech, pacing and timing are unverified. Do not claim actual scene content."} Return ONLY JSON: {"segments":[{"title":"...","start":0,"end":25,"score":85,"reason":"..."}]}. Transcript:\n${compactTranscript(cues)}\n Structure: ${JSON.stringify(structure||null)}`;
+  const prompt = `Find ALL distinct high-retention (up to 15), self-contained viral hooks. Each segment MUST be 20–30 seconds, within the supplied duration. Do not invent words. Score potential 0–100, not a guaranteed prediction. Keep each title under 60 characters and each reason to one short sentence. ${cues.length?"The transcript is one line per phrase as '[MM:SS] text' (or '[H:MM:SS] text' past one hour); each stamp is when that phrase starts. Use these timestamps, and return start/end as plain seconds (e.g. [1:02:05] = 3725).":"You have NOT watched or heard this video. Suggest provisional candidate windows based ONLY on the title, duration and user outline. Every reason must start with 'Structure-only candidate: ' and disclose that speech, pacing and timing are unverified. Do not claim actual scene content."} Return ONLY JSON: {"segments":[{"title":"...","start":0,"end":25,"score":85,"reason":"..."}]}. Transcript:\n${compactTranscript(cues)}\n Structure: ${JSON.stringify(structure||null)}`;
   let endpoint: string, headers: Record<string,string>, body: object;
   if (provider === "gemini") {
     endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     headers = { "Content-Type": "application/json", "x-goog-api-key": key };
-    body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } };
+    body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", maxOutputTokens: 16000 } };
   } else if (provider === "anthropic") {
     endpoint = "https://api.anthropic.com/v1/messages";
     headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
-    body = { model, max_tokens: 3000, messages: [{ role: "user", content: prompt }] };
+    body = { model, max_tokens: 6000, messages: [{ role: "user", content: prompt }] };
   } else {
     endpoint = `${providerBaseUrl(provider, baseUrl)}/chat/completions`;
     headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
-    body = { model, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } };
+    // Thinking models (e.g. gemini-2.5) spend output tokens on reasoning; a low default cut the JSON off mid-list.
+    body = { model, max_tokens: 16000, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } };
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(240000) });
   // Do not include provider bodies: some services can echo credentials in errors.
