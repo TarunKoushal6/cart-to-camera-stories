@@ -297,7 +297,7 @@ def secs(t):
 
 def clean_words(text):
     import html
-    return [w for w in html.unescape(TAG_RE.sub('', text)).replace('\u200b', '').split() if w and not re.fullmatch(r'\[.*\]|\(.*\)', w)]
+    return [w for w in html.unescape(TAG_RE.sub('', text)).replace('\u200b', '').split() if w and w not in ('>>', '&gt;&gt;', '-') and not re.fullmatch(r'\[.*\]|\(.*\)', w)]  # '>>' marks a speaker change
 
 def parse_subtitles(text):
     """Parse VTT/SRT into word cues. YouTube auto-captions carry per-word <00:00:01.230> stamps (karaoke-ready);
