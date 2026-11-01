@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl } from "./studio-rules";
+import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl, transcriptEnd } from "./studio-rules";
 import { canApproveClip, viralReviewSchema } from "./clip-review-rules";
 
 export const importYouTube = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({url:z.string().max(2000)}).parse(d)).handler(async({data,context})=>{

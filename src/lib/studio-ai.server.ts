@@ -1,4 +1,4 @@
-import { segmentSchema, providerBaseUrl, type Provider, type Cue } from "./studio-rules";
+import { segmentSchema, providerBaseUrl, compactTranscript, transcriptEnd, type Provider, type Cue } from "./studio-rules";
 import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 
