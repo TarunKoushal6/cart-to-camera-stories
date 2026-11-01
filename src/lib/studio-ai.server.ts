@@ -58,11 +58,14 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
-  return parseAiSegments(text, cues.length ? transcriptEnd(cues) + 1 : structure?.duration || 0);
+  const segments = parseAiSegments(text, cues.length ? transcriptEnd(cues) + 1 : structure?.duration || 0);
+  return condensed?.filtered ? withinKept(segments, condensed.kept) : segments;
 }
 
 export async function reviewWithKey(provider:Provider,model:string,key:string,baseUrl:string|null,title:string,cues:Cue[],caption:string,voiceover:string,duration:number) {
-  const prompt=`Critique this ${duration}s short: ${JSON.stringify({title,cues,caption,voiceover})}. You have not seen the rendered video. Rate hook, pacing and retention 0-100 using ONLY this evidence. Pacing is a transcript/script estimate, not a measured visual edit. Never promise virality. Return ONLY JSON {"hook":70,"pacing":70,"retention":70,"verdict":"Viral or Needs Work","critique":"clear critique with evidence limitations","feedback":["specific actionable edit"],"evidence":"${cues.length?"transcript":"structure-only"}"}. If transcript is absent, label the critique provisional and do not invent speech or scenes.`;
+  // Plain timestamped lines instead of word-level JSON objects: same evidence, far fewer tokens.
+  const transcript=compactTranscript(cues).slice(0,4000);
+  const prompt=`Critique this ${duration}s short: ${JSON.stringify({title,transcript,caption:caption.slice(0,600),voiceover})}. You have not seen the rendered video. Rate hook, pacing and retention 0-100 using ONLY this evidence. Pacing is a transcript/script estimate, not a measured visual edit. Never promise virality. Return ONLY JSON {"hook":70,"pacing":70,"retention":70,"verdict":"Viral or Needs Work","critique":"clear critique with evidence limitations","feedback":["specific actionable edit"],"evidence":"${cues.length?"transcript":"structure-only"}"}. If transcript is absent, label the critique provisional and do not invent speech or scenes.`;
   let endpoint:string,headers:Record<string,string>,body:object;
   if(provider==="gemini"){endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;headers={"Content-Type":"application/json","x-goog-api-key":key};body={contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json"}};}
   else if(provider==="anthropic"){endpoint="https://api.anthropic.com/v1/messages";headers={"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"};body={model,max_tokens:1800,messages:[{role:"user",content:prompt}]};}
