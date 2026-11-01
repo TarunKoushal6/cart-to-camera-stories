@@ -21,7 +21,7 @@ Uploading files may take minutes; container build/model downloads and processing
 ## Docker
 Build: docker build -t cutline-worker .
 Run: docker run --env-file /path/to/private-worker.env -p 7860:7860 -v cutline-data:/tmp/cutline cutline-worker
-The private env file contains WORKER_TOKEN and optionally WHISPER_MODEL=base. Do not commit it. Put a TLS reverse proxy in front and save its public HTTPS URL in Cutline.
+The private env file contains WORKER_TOKEN and optionally WHISPER_MODEL=base. Speed: the worker first uses the video's existing YouTube captions (YOUTUBE_SUBTITLES=1, languages from YOUTUBE_SUB_LANGS, default en,hi,en-orig,hi-orig, original-language tracks preferred) and only transcribes audio when none exist; fallback Whisper uses WHISPER_THREADS (default: all CPU cores) and WHISPER_BEAM_SIZE=1. Do not commit it. Put a TLS reverse proxy in front and save its public HTTPS URL in Cutline.
 
 ## Protocol / other FastAPI hosts
 The URL must implement Cutline v1: POST /jobs {id,url}; GET /jobs/{id} returns status and word-timed cues; POST /jobs/{id}/render accepts segment windows and object-scoped signed upload URLs. An arbitrary OpenShorts/Modal endpoint is not automatically compatible; deploy this container or implement the adapter. Modal infrastructure is not included, but any Docker-capable HTTPS host can run this image. Protect a public worker with WORKER_TOKEN. Leaving it blank allows public compute usage and job reads.

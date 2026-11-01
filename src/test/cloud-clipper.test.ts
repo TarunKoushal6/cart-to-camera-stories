@@ -48,3 +48,23 @@ describe("worker download progress", () => {
     expect(workerStatusSchema.parse({ status: "transcribing", stage: "mystery" }).stage).toBeUndefined();
   });
 });
+describe("cloud job steps", () => {
+  it("shows the download step with percent from worker progress", async () => {
+    const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
+    const v = cloudJobProgress("transcribing", { stage: "downloading", progress: { downloaded: 256, total: 1024 } });
+    expect(v.step).toBe(1);
+    expect(v.label).toBe("Downloading video");
+    expect(v.percent).toBe(25);
+  });
+  it("maps AI selection and rendering to their own steps", async () => {
+    const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
+    expect(cloudJobProgress("analyzing", null).label).toBe("AI selecting viral hooks");
+    const r = cloudJobProgress("rendering", { rendered: 3, total: 12 });
+    expect(r.step).toBe(4);
+    expect(r.percent).toBe(25);
+  });
+  it("treats subtitle fetching as the speech/captions step", async () => {
+    const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
+    expect(cloudJobProgress("transcribing", { stage: "fetching_subtitles" }).label).toBe("Extracting speech/captions");
+  });
+});
