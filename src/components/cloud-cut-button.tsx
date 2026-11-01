@@ -73,6 +73,7 @@ function useCloudCut(sourceId?: string) {
     setStopping(true);
     try {
       await cancel({ data: { jobId: job.id } });
+      setCurrentJobId(job.id); // keep showing this run as "Stopped" instead of hiding it
       await qc.invalidateQueries({ queryKey: ["cloud-jobs"] });
       toast.success("Auto cut stopped");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't stop auto cut"); }
