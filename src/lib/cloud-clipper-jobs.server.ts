@@ -61,7 +61,9 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id);
         return { status: "rendering" };
       } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing", error: "Analysis or render handoff interrupted; retrying. Check AI settings and worker availability if this persists." }).eq("id", job.id);
+        // App-authored messages never include provider bodies, so the real reason is safe to show.
+        const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing", error: `AI step failed, retrying: ${reason}` }).eq("id", job.id);
         throw e;
       }
     }
@@ -100,7 +102,8 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error: null }).eq("id", job.id);
         return { status: nextStatus };
       } catch (e) {
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing", error: "Verification or AI review interrupted; retrying. Saved clips remain in your library." }).eq("id", job.id);
+        const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing", error: `Verification or AI review failed, retrying (saved clips stay in your library): ${reason}` }).eq("id", job.id);
         throw e;
       }
     }

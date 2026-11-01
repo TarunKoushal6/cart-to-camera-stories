@@ -80,6 +80,7 @@ export function CloudCutButton({ url, sourceId }: { url: string; sourceId?: stri
         </ol>
         {view.percent != null ? <Progress value={view.percent} aria-label="Cloud clipping progress" /> : active && <Progress value={100} className="animate-pulse opacity-50" aria-label="Cloud worker working" />}
         <p className="text-xs text-muted-foreground tabular-nums">{view.label}{view.percent != null ? ` · ${Math.round(view.percent)}%` : ""}{view.detail ? ` · ${view.detail}` : ""}</p>
+        {job.error && <p className="text-xs text-destructive whitespace-pre-wrap break-words">{job.error}</p>}
       </div>)}
   </div>;
 }
