@@ -41,6 +41,7 @@ class Segment(BaseModel):
     end: float
     score: int = Field(ge=0, le=100)
     reason: str = Field(max_length=1000)
+    vibe: str | None = None
 
 class Target(BaseModel):
     id: uuid.UUID
@@ -48,8 +49,13 @@ class Target(BaseModel):
     segment: Segment
     upload_url: HttpUrl
 
+class MusicPlan(BaseModel):
+    volume: float = Field(default=0.16, ge=0, le=0.5)
+    clips: dict[str, str | None] = Field(default_factory=dict)  # target id -> vibe, or None for no music
+
 class Render(BaseModel):
     targets: list[Target] = Field(min_length=1, max_length=15)
+    music: MusicPlan | None = None
 
 def folder(job):
     return ROOT / str(job)
@@ -478,7 +484,75 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{text.strip()}')
     path.write_text(header + '\n'.join(lines), encoding='utf-8')
 
-def render(job, targets):
+
+# ---- Royalty-free background music ----
+# Tracks you drop into music/<vibe>/ (mp3/wav/m4a/ogg/flac) are used first. Only add music you are licensed
+# to use (e.g. YouTube Audio Library, Pixabay Music, your own). Otherwise the worker synthesises an original
+# instrumental bed with FFmpeg, which is royalty-free because it is generated on the fly.
+MUSIC_DIR = Path(os.getenv('MUSIC_DIR') or Path(__file__).resolve().parent / 'music')
+VIBES = ('energetic', 'chill', 'emotional', 'dramatic', 'inspiring', 'funny')
+MAJ, MIN = 1.26, 1.189
+# vibe: (bpm, [(bass root Hz, third ratio)] one chord per bar, kick, hats, arpeggio, lowpass Hz)
+STYLES = {
+    'energetic': (124, [(110, MIN), (87.31, MAJ), (130.81, MAJ), (98, MAJ)], True, True, True, 6000),
+    'chill':     (80,  [(87.31, MAJ), (110, MIN), (73.42, MIN), (98, MAJ)], False, True, False, 1800),
+    'emotional': (68,  [(110, MIN), (87.31, MAJ), (130.81, MAJ), (98, MAJ)], False, False, True, 2500),
+    'dramatic':  (88,  [(73.42, MIN), (58.27, MAJ), (98, MIN), (110, MAJ)], True, False, False, 3000),
+    'inspiring': (100, [(130.81, MAJ), (98, MAJ), (110, MIN), (87.31, MAJ)], True, True, True, 5000),
+    'funny':     (116, [(130.81, MAJ), (87.31, MAJ), (98, MAJ), (130.81, MAJ)], False, True, True, 7000),
+}
+
+def music_file(vibe, seed):
+    folder = MUSIC_DIR / vibe
+    if not folder.is_dir(): return None
+    tracks = sorted(p for p in folder.iterdir() if p.suffix.lower() in ('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac') and p.stat().st_size > 0)
+    return tracks[sum(seed.encode()) % len(tracks)] if tracks else None
+
+def synth_expr(vibe):
+    bpm, chords, kick, hats, arp, _ = STYLES[vibe]
+    beat = 60 / bpm; bar = beat * 4
+    k = f'mod(floor(t/{bar:.4f}),{len(chords)})'
+    def pick(vals):
+        e = f'{vals[-1]:.3f}'
+        for i in range(len(vals) - 2, -1, -1): e = f'if(eq({k},{i}),{vals[i]:.3f},{e})'
+        return e
+    R, T = pick([c[0] for c in chords]), pick([c[1] for c in chords])
+    pos = f'mod(t,{bar:.4f})'
+    env = f'min(1,{pos}*3)*min(1,({bar:.4f}-{pos})*6)'  # soft chord changes, no clicks
+    pad = f'0.16*{env}*(sin(2*PI*{R}*2*t)+0.7*sin(2*PI*{R}*2*{T}*t)+0.6*sin(2*PI*{R}*2*1.498*t)+0.8*sin(2*PI*{R}*t))*(0.8+0.2*sin(2*PI*0.25*t))'
+    parts = [pad]
+    if kick: parts.append(f'0.55*sin(2*PI*(45+90*exp(-mod(t,{beat:.4f})*35))*mod(t,{beat:.4f}))*exp(-mod(t,{beat:.4f})*7)')
+    if hats: parts.append(f'0.06*(random(0)*2-1)*exp(-mod(t+{beat/2:.4f},{beat:.4f})*60)')
+    if arp:
+        step = beat / 2; note = f'mod(floor(t/{step:.4f}),3)'
+        mult = f'if(eq({note},0),1,if(eq({note},1),{T},1.498))'
+        parts.append(f'0.12*sin(2*PI*{R}*4*{mult}*t)*exp(-mod(t,{step:.4f})*9)')
+    return '+'.join(parts)
+
+def music_bed(vibe, seconds, out):
+    """Royalty-free bed for one clip: a licensed track from music/<vibe>/ if present, else an original synth."""
+    if vibe not in VIBES: vibe = 'inspiring'
+    track = music_file(vibe, out.stem)
+    if track:
+        run(['ffmpeg', '-y', '-stream_loop', '-1', '-i', str(track), '-t', f'{seconds:.2f}', '-ac', '2', '-ar', '48000', str(out)], failure='FFmpeg could not prepare the music track')
+        return out
+    lowpass = STYLES[vibe][5]
+    extra = ',aecho=0.8:0.7:120:0.25' if vibe == 'emotional' else ''
+    run(['ffmpeg', '-y', '-f', 'lavfi', '-i', f"aevalsrc='{synth_expr(vibe)}':s=48000:d={seconds:.2f}",
+         '-af', f'lowpass=f={lowpass},highpass=f=35{extra},alimiter=limit=0.9,aformat=channel_layouts=stereo', str(out)], failure='FFmpeg could not synthesise background music')
+    return out
+
+def music_mix_args(duration, volume):
+    """Speech stays on top: music sits at `volume` and a sidechain compressor ducks it further while anyone talks."""
+    fade = max(0.0, duration - 1.5)
+    return ['-filter_complex',
+            f'[0:a]aresample=48000,asplit=2[sp][sc];'
+            f'[1:a]aresample=48000,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
+            f'[m][sc]sidechaincompress=threshold=0.015:ratio=12:attack=20:release=450[duck];'
+            f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
+            '-map', '0:v', '-map', '[a]']
+
+def render(job, targets, music=None):
     try:
         state = read(job); source = Path(state['source']); d = folder(job); completed = []
         for t in targets:
@@ -497,9 +571,26 @@ def render(job, targets):
                 render_source, offset = vertical, 0
             # Relative name + cwd: Windows paths (C:\\...) break FFmpeg filter parsing at the drive colon.
             filters = f'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,ass={ass.name}'
-            run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-t', str(s.end-s.start),
-                 '-vf', filters, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-                 '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)], cwd=str(d))
+            length = s.end - s.start
+            vibe = music.clips.get(str(t.id)) if music else None
+            encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+                      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)]
+            rendered = False
+            if vibe:
+                bed = d / f'{t.id}-music.wav'
+                try:
+                    music_bed(vibe, length, bed)
+                    run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-i', bed.name, '-t', str(length),
+                         '-vf', filters, *music_mix_args(length, music.volume), *encode], cwd=str(d), failure='FFmpeg could not mix background music')
+                    rendered = True
+                except StepError:
+                    # Music is a nice-to-have: never lose the clip because the mix failed.
+                    log.exception('Music mix failed for %s; rendering without music', t.id)
+                finally:
+                    bed.unlink(missing_ok=True)
+            if not rendered:
+                run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-t', str(length),
+                     '-vf', filters, *encode], cwd=str(d))
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))
@@ -552,5 +643,5 @@ def begin_render(job: uuid.UUID, body: Render):
         if s['status'] in ['rendering','complete']: return {'accepted': True}
         if s['status'] != 'analyzed': raise HTTPException(409, 'Transcript not ready')
         save_state(folder(job) / 'state.json', {**s, 'status': 'rendering'})
-    POOL.submit(render, job, body.targets)
+    POOL.submit(render, job, body.targets, body.music)
     return {'accepted': True}
