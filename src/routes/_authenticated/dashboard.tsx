@@ -33,7 +33,7 @@ function Dashboard() {
   async function removeSource(id: string) {
     if (!window.confirm("Delete this video and all its clips?")) return;
     const { error } = await supabase.from("studio_sources").delete().eq("id", id);
-    if (error) return toast.error("Couldn't delete this video");
+    if (error) { toast.error("Couldn't delete this video"); return; }
     await Promise.all(["studio-sources", "ready-clips", "studio-clip-count"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
   }
 

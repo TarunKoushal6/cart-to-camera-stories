@@ -55,7 +55,7 @@ export function formatSpeed(bytesPerSecond: number) {
   return `${formatBytes(bytesPerSecond)}/s (${mbps >= 10 ? Math.round(mbps) : mbps.toFixed(1)} Mbps)`;
 }
 /** Separate size / speed / ETA strings for the download stage. */
-export function downloadStats(p: WorkerProgress | null | undefined): { size: string; speed: string | null; eta: string | null; percent: number | null } | null {
+export function downloadStats(p: LiveCloudProgress): { size: string; speed: string | null; eta: string | null; percent: number | null } | null {
   if (p?.stage !== "downloading" || !p.progress?.downloaded) return null;
   const g = p.progress, downloaded = g.downloaded ?? 0;
   const percent = g.total ? Math.min(100, (downloaded / g.total) * 100) : null;
