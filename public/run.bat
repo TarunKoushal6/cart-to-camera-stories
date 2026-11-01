@@ -57,9 +57,21 @@ REM A small helper script avoids fragile quoting inside "python -c".
 >> export_cookies.py echo     print("COOKIES_OK")
 >> export_cookies.py echo except Exception as e:
 >> export_cookies.py echo     print("COOKIE_NOTE:", e)
-python export_cookies.py
-del /q export_cookies.py >nul 2>&1
-REM A cookie failure is not fatal: the worker can still try without cookies.
+python export_cookies.py > cookie_result.txt 2>&1
+findstr /b /c:"COOKIES_OK" cookie_result.txt >nul 2>&1
+if errorlevel 1 (
+  REM Export failed (often DPAPI under Administrator). Remove any partial or
+  REM empty cookies.txt so the worker never loads a broken cookie file.
+  if exist cookies.txt del /q cookies.txt >nul 2>&1
+  echo        No browser cookies exported - continuing without cookies.
+) else (
+  REM Delete the file if Edge had no cookies and an empty file was written.
+  for %%F in (cookies.txt) do if %%~zF EQU 0 del /q cookies.txt >nul 2>&1
+  if exist cookies.txt (echo        cookies.txt saved.) else (echo        Edge had no cookies - continuing without cookies.)
+)
+del /q export_cookies.py cookie_result.txt >nul 2>&1
+REM Cookies are optional: the worker uses bot-resistant player clients and
+REM retries without cookies if a cookie file is rejected.
 
 echo [5/5] Starting the worker on port %PORT% ...  (press Ctrl+C to stop)
 echo.
