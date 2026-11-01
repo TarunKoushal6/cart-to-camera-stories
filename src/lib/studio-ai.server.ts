@@ -4,6 +4,13 @@ import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 import { AiRequestError } from "./studio-ai-default.server";
 
+/** OpenAI-style request body. Custom gateways often reject strict JSON mode, so they rely on the prompt + tolerant parsing. */
+export function chatBody(provider: Provider, model: string, prompt: string, maxTokens: number) {
+  const body: Record<string, unknown> = { model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] };
+  if (provider !== "custom") body.response_format = { type: "json_object" };
+  return body;
+}
+
 /** Lists the models a key can use, so the settings page can offer a dropdown. */
 export async function fetchModels(provider: Provider, key: string, baseUrl?: string | null): Promise<string[]> {
   let endpoint: string, headers: Record<string, string>;
