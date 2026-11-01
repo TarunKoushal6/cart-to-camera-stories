@@ -21,7 +21,7 @@ export function StudioSource({source}:{source:Source}) {
   const [busy,setBusy]=useState(false),[expanded,setExpanded]=useState(false),[text,setText]=useState("");
   const [start,setStart]=useState(0),[length,setLength]=useState(25),[title,setTitle]=useState("");
   const [duration,setDuration]=useState(source.duration||0),[outline,setOutline]=useState(""),[language,setLanguage]=useState("auto"),[transcriptionStatus,setTranscriptionStatus]=useState("");
-  const cues=source.transcript as Cue[];
+  const cues=Array.isArray(source.transcript)?source.transcript as Cue[]:[];
   const {data:clips=[]}=useQuery({queryKey:["studio-clips",source.id],queryFn:async()=>{ const r=await supabase.from("studio_clips").select("*").eq("source_id",source.id).order("score",{ascending:false}); if(r.error) throw r.error; return r.data; }});
   async function run(fn:()=>Promise<unknown>){setBusy(true);try{await fn();await qc.invalidateQueries({queryKey:["studio-clips",source.id]});await qc.invalidateQueries({queryKey:["studio-sources"]});}catch(e){toast.error(e instanceof Error?e.message:"Couldn't complete this action");}finally{setBusy(false);}}
   return <article className="border-b border-border py-6">

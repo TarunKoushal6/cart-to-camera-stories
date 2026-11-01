@@ -24,7 +24,8 @@ function Dashboard() {
     const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
     return r.data.map((c) => ({ ...c, url: urls.get(c.video_path!) ?? "" }));
   } });
-  const { data: sources = [] } = useQuery({ queryKey: ["studio-sources"], queryFn: async () => {
+  // Distinct key: this list selects only summary columns, while the Voiceover page caches full rows under ["studio-sources"].
+  const { data: sources = [] } = useQuery({ queryKey: ["studio-sources", "summary"], queryFn: async () => {
     const r = await supabase.from("studio_sources").select("id,title,thumbnail_url,duration,author").order("created_at", { ascending: false });
     if (r.error) throw r.error;
     return r.data;
