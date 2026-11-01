@@ -5,10 +5,10 @@ import { encrypt } from "@/lib/studio-crypto.server";
 const SECRET = "test-secret-test-secret-test-secret";
 describe("shared default AI", () => {
   const env = { ...process.env };
-  beforeEach(() => { process.env["DEFAULT_AI_KEY"] = "primary"; process.env["DEFAULT_AI_KEY_BACKUP"] = "backup"; });
+  beforeEach(() => { process.env["DEFAULT_AI_KEY_BACKUP"] = "primary"; process.env["DEFAULT_AI_KEY"] = "backup"; });
   afterEach(() => { process.env = { ...env }; });
 
-  it("uses gemini-2.5-flash on the iceyyy endpoint when the account has no key", async () => {
+  it("uses the hermes key (DEFAULT_AI_KEY_BACKUP) first with gemini-2.5-flash on iceyyy", async () => {
     const used = await withAi(null, SECRET, async c => c);
     expect(used).toMatchObject({ key: "primary", model: "gemini-2.5-flash", baseUrl: "https://api.iceyyy.dev/v1", shared: true });
     expect(DEFAULT_AI.provider).toBe("custom");
