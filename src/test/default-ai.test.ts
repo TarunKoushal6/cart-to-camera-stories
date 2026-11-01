@@ -36,4 +36,19 @@ describe("shared default AI", () => {
     const saved = { provider: "openai", model: "gpt-x", base_url: null, encrypted_key: await encrypt("mine", SECRET) };
     await expect(withAi(saved, SECRET, async () => { throw new AiRequestError("bad model", 400); })).rejects.toThrow("bad model");
   });
+
+  it("falls back from a 402 personal key to the hermes key without surfacing the 402", async () => {
+    const saved = { provider: "openai", model: "gpt-x", base_url: null, encrypted_key: await encrypt("mine", SECRET) };
+    const out = await withAi(saved, SECRET, async c => { if (c.key === "mine") throw new AiRequestError("no credit", 402); return c.key; });
+    expect(out).toBe("primary");
+  });
+
+  it("reports the hermes key's error, not the stale fallback's 402, when every shared key fails", async () => {
+    await expect(withAi(null, SECRET, async c => { throw new AiRequestError(c.key === "primary" ? "hermes timeout" : "stale 402", c.key === "primary" ? 504 : 402); })).rejects.toThrow("hermes timeout");
+  });
+
+  it("uses the shared key when the saved personal key cannot be decrypted", async () => {
+    const saved = { provider: "openai", model: "gpt-x", base_url: null, encrypted_key: "corrupt" };
+    expect(await withAi(saved, SECRET, async c => c.key)).toBe("primary");
+  });
 });

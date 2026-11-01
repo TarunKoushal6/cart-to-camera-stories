@@ -23,18 +23,25 @@ export function sharedAiCredentials(env: Record<string, string | undefined> = pr
     .map(key => ({ provider: DEFAULT_AI.provider, model: DEFAULT_AI.model, key, baseUrl: DEFAULT_AI.baseUrl, shared: true }));
 }
 
-/** Runs an AI call with the owner's saved key, then the hermes shared key, then the other shared key. */
+/** Runs an AI call with the owner's saved key, then the hermes shared key, then the other shared key.
+ * A refused (401/402/403/429) or undecryptable personal key never surfaces; if every shared key fails,
+ * the active (first) shared key's error is reported, not the personal key's or the stale fallback's. */
 export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredential) => Promise<T>): Promise<T> {
   const shared = sharedAiCredentials();
   if (saved?.model) {
-    const { decrypt } = await import("./studio-crypto.server");
-    const own: AiCredential = { provider: z.enum(providers).parse(saved.provider), model: saved.model, key: await decrypt(saved.encrypted_key, secret), baseUrl: saved.base_url, shared: false };
-    try { return await run(own); } catch (e) { if (!shared.length || !savedKeyUnusable(e)) throw e; }
+    let own: AiCredential | null = null;
+    try {
+      const { decrypt } = await import("./studio-crypto.server");
+      own = { provider: z.enum(providers).parse(saved.provider), model: saved.model, key: await decrypt(saved.encrypted_key, secret), baseUrl: saved.base_url, shared: false };
+    } catch (e) { if (!shared.length) throw e; }
+    if (own) {
+      try { return await run(own); } catch (e) { if (!shared.length || !savedKeyUnusable(e)) throw e; }
+    }
   }
   if (!shared.length) throw new Error("Save your AI endpoint, key and model in Settings first.");
-  let last: unknown;
+  let first: unknown;
   for (const c of shared) {
-    try { return await run(c); } catch (e) { last = e; }
+    try { return await run(c); } catch (e) { first ??= e; }
   }
-  throw last;
+  throw first;
 }
