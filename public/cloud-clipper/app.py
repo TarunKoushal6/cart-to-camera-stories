@@ -688,7 +688,8 @@ def start(body: Intake):
     d = folder(body.id)
     with LOCK:
         if (d / 'state.json').exists(): return {'id': str(body.id)}
-        active = sum(1 for p in ROOT.glob('*/state.json') if read_state(p).get('status') in ['transcribing','analyzed','rendering'])
+        # Only running work counts: 'analyzed' jobs just wait for the app's AI and use no CPU, so they never block new runs.
+        active = sum(1 for p in ROOT.glob('*/state.json') if read_state(p).get('status') in ['transcribing','rendering'] and p.parent.name not in CANCELLED)
         if active >= 3: raise HTTPException(429, 'Worker queue full')
         d.mkdir(exist_ok=True)
         save_state(d / 'state.json', {'status':'transcribing','stage':'queued','progress':{},'completed':[]})
