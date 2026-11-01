@@ -69,17 +69,20 @@ def write(job, **fields):
 class StepError(RuntimeError):
     """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
 
-def run(args, timeout=14400, failure='Media command failed'):
+def run(args, timeout=14400, failure='Media command failed', cwd=None):
     # Logs never contain signed upload URLs, bearer tokens or provider keys.
     try:
-        r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, cwd=cwd)
     except FileNotFoundError:
         raise StepError(f'{args[0]} is not installed on the worker. Install FFmpeg/yt-dlp and restart.')
     except subprocess.TimeoutExpired:
         raise StepError(f'{failure}: timed out.')
     if r.returncode:
-        log.error('%s failed: %s', args[0], r.stderr.decode(errors='replace')[-2000:])
-        raise StepError(f'{failure}. See worker console for details.')
+        err = r.stderr.decode(errors='replace')
+        log.error('%s failed: %s', args[0], err[-2000:])
+        # FFmpeg stderr names only local files; yt-dlp output is summarised elsewhere.
+        detail = f"\nFFmpeg said: {err.strip()[-600:]}" if args[0] == 'ffmpeg' else ''
+        raise StepError(f'{failure}. See worker console for details.{detail}')
     return r.stdout.decode()
 
 def explain_download(output):
@@ -472,10 +475,11 @@ def render(job, targets):
                      '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', '-threads', '2', str(cut)])
                 reframe_source(cut, vertical)
                 render_source, offset = vertical, 0
-            filters = f'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,ass={ass}'
+            # Relative name + cwd: Windows paths (C:\\...) break FFmpeg filter parsing at the drive colon.
+            filters = f'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,ass={ass.name}'
             run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-t', str(s.end-s.start),
                  '-vf', filters, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-                 '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)])
+                 '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)], cwd=str(d))
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))
