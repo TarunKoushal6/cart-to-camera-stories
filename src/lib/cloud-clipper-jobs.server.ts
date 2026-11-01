@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { cloudTargetSchema, workerStatusSchema, musicModeSchema, clipMusic, MUSIC_VOLUME } from "./cloud-clipper-rules";
 
+const ACTIVE = ["transcribing", "analyzing", "rendering", "finalizing"];
+
 /** Called only after session or schedule authorization; always bound to the job owner. */
 export async function advanceCloudCut(data: {jobId:string}, context: {supabase:SupabaseClient<Database>;userId:string}) {
     const { data: job } = await context.supabase.from("studio_cloud_jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).single();
@@ -64,12 +66,13 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const mode = musicModeSchema.catch("auto").parse(job.music);
         await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads,
           music: { volume: MUSIC_VOLUME, clips: Object.fromEntries(uploads.map(u => [u.id, clipMusic(mode, u.segment.vibe)])) } });
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id);
+        // Status guards: a Stop pressed mid-tick must never be overwritten back to an active state.
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id).in("status", ACTIVE);
         return { status: "rendering" };
       } catch (e) {
         // App-authored messages never include provider bodies, so the real reason is safe to show.
         const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing", error: `AI step failed, retrying: ${reason}` }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "analyzing", error: `AI step failed, retrying: ${reason}` }).eq("id", job.id).in("status", ACTIVE);
         throw e;
       }
     }
@@ -108,11 +111,11 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const nextStatus = moreToReview || !workerDone ? "rendering" : state.status === "failed" ? "failed" : "ready";
         const error = nextStatus === "failed" ? `${saved} of ${targets.length} clips saved before the worker stopped. ${workerError}`
           : nextStatus === "ready" && saved < targets.length ? `${saved} of ${targets.length} clips saved; the worker skipped the rest.` : null;
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error }).eq("id", job.id).in("status", ACTIVE);
         return { status: nextStatus };
       } catch (e) {
         const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing", error: `Verification or AI review failed, retrying (saved clips stay in your library): ${reason}` }).eq("id", job.id);
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing", error: `Verification or AI review failed, retrying (saved clips stay in your library): ${reason}` }).eq("id", job.id).in("status", ACTIVE);
         throw e;
       }
     }

@@ -98,6 +98,9 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
   return null;
 }
 export const CLOUD_STEPS = ["Download video", "Captions", "AI hook selection", "9:16 vertical cut & burn captions", "Ready"] as const;
+/** Error text for a job the owner stopped; shown as a neutral "Stopped" state, not a failure. */
+export const STOPPED_MESSAGE = "Stopped by you. Clips already saved stay in your library.";
+export const isStoppedJob = (status: string, error?: string | null) => status === "failed" && error === STOPPED_MESSAGE;
 export type LiveCloudProgress = (WorkerProgress & { rendered?: number; total?: number }) | null | undefined;
 /** Current step (index into CLOUD_STEPS), detail line and percent for a cloud job. */
 export function cloudJobProgress(status: string, live: LiveCloudProgress): { step: number; label: string; detail: string | null; percent: number | null } {
