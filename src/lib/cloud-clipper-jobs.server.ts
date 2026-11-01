@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { cloudTargetSchema, workerStatusSchema } from "./cloud-clipper-rules";
+import { cloudTargetSchema, workerStatusSchema, musicModeSchema, clipMusic, MUSIC_VOLUME } from "./cloud-clipper-rules";
 
 /** Called only after session or schedule authorization; always bound to the job owner. */
 export async function advanceCloudCut(data: {jobId:string}, context: {supabase:SupabaseClient<Database>;userId:string}) {
@@ -60,7 +60,10 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           if (upload.error || !upload.data) throw new Error("Couldn't authorize clip upload.");
           uploads.push({ ...t, upload_url: upload.data.signedUrl });
         }
-        await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads });
+        // Older workers ignore `music`; newer ones mix a ducked royalty-free bed per clip mood.
+        const mode = musicModeSchema.catch("auto").parse(job.music);
+        await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads,
+          music: { volume: MUSIC_VOLUME, clips: Object.fromEntries(uploads.map(u => [u.id, clipMusic(mode, u.segment.vibe)])) } });
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id);
         return { status: "rendering" };
       } catch (e) {

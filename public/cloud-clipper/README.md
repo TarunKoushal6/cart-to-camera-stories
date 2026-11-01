@@ -56,6 +56,16 @@ Not included: OpenShorts Gemini scene-aware moment selection, AI-generated Short
 
 YouTube can reject either downloader. The default image includes Deno for current yt-dlp JavaScript challenges. For authorized videos needing cookies, mount a private Netscape-format cookie file and set YOUTUBE_COOKIES_FILE on the default worker, or simply place `cookies.txt` next to `app.py` (or in the data folder) and it is picked up automatically. Empty cookie files are ignored. Alternatively set YOUTUBE_COOKIES_BROWSER=chrome (or firefox/edge) to read cookies from a logged-in browser on the same machine; no browser is used unless you set it, because Edge/Chrome decryption in an Administrator Windows shell fails with a DPAPI error (yt-dlp issue 10927). If yt-dlp reports a cookie/DPAPI error, the worker retries once without cookies. When no cookies are loaded the worker passes `--extractor-args youtube:player_client=tv,android,web_safari` (with cookies it uses yt-dlp defaults, because desktop cookies are rejected by TV/Android clients); override it with YOUTUBE_EXTRACTOR_ARGS or set it to `none` to use yt-dlp's own defaults; never upload cookies to Cutline or commit them. OpenShorts uses its upstream download configuration. Neither path bypasses YouTube permissions or guarantees access.
 
+## Background music (no voiceover)
+
+Each clip can get a quiet background music bed that matches its mood (energetic, chill, emotional, dramatic, inspiring, funny). Pick "Auto" on the dashboard to let your AI tag each clip's mood, choose one mood for all clips, or "Off" for original audio only.
+
+- The music sits well below the speaker and a sidechain compressor lowers it further (about 10 dB) whenever someone talks, then lets it back up in pauses. It fades in and out.
+- By default the worker **generates an original instrumental with FFmpeg** for each clip. Because it is synthesised on the fly, there is no licence to clear. It is simple, ambient-style music, not a produced track.
+- For better-sounding music, put licensed royalty-free tracks in `music/<mood>/` next to `app.py` (for example `music/energetic/track1.mp3`), or set `MUSIC_DIR`. Supported: mp3, wav, m4a, ogg, flac, aac. Only add music you are allowed to use on social platforms (YouTube Audio Library, Pixabay Music, your own tracks). Check each source's terms; some require attribution.
+- If mixing music fails, the clip is still rendered with its original audio.
+- Older workers ignore the music setting, so update `app.py` to get music.
+
 ## Approval and next-day scheduling
 
 Successful MP4s are stored privately under the owner's clip paths and AI-reviewed. Open the source's review list, select clips, choose Instagram or Facebook, then press Approve & schedule tomorrow. No post is queued without that explicit action. Existing queued clips are skipped on retry; approved but unscheduled clips remain selectable. Slots use your browser's local timezone, start tomorrow at 10:00 and normally run two hours apart; larger batches compress the spacing to keep all 15 clips within tomorrow. Scheduling uses the day you approve, not the day you started processing. YouTube Shorts scheduling remains in the individual clip editor. Connect the intended social account first; live platform acceptance is not guaranteed by a worker render.

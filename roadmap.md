@@ -1,3 +1,7 @@
+- [x] Cut AI input for long videos: condensed transcript (~80% smaller on the 2h55m test video) and lighter clip reviews.
+- [x] Royalty-free background music per clip mood with ducking under speech (no voiceover); verified on test renders for all 6 moods.
+- [ ] Check AI clip quality with the condensed transcript — blocked: shared iceyyy.dev keys out of credit (402) / backup 502.
+- [ ] Live music render on the VPS worker — needs publish + run.bat to fetch the new app.py.
 - [x] Fix build errors from the AI clip-list parsing change and the new test file.
 - [x] Fix build error in auto cut progress panel; simplified dashboard verified in a signed-in screenshot.
 - [x] Compare pinned OpenShorts source, add optional Python bridge/full-image deployment, health-check compatibility, recover leased interrupted jobs, and preserve approval with retryable next-day batches; 19 app tests and 2 worker tests pass, signed-in setup/download checks pass, preview build OK.
