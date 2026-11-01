@@ -285,7 +285,7 @@ def parse_subtitles(text):
         if m:
             cur = [secs(m.group(1)), secs(m.group(2)), []]; blocks.append(cur); continue
         if cur is not None:
-            if not line.strip(): cur = None
+            if line == '': cur = None
             else: cur[2].append(line)
     timed = any(INLINE_RE.search(l) for b in blocks for l in b[2])
     cues, prev_text = [], None
