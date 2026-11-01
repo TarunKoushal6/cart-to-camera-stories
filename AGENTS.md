@@ -18,7 +18,7 @@
 
 - The primary Cutline studio uses owner-scoped studio_sources, studio_clips and studio_posts; legacy product routes remain to preserve existing content.
 - Personal AI and Facebook credentials are AES-GCM encrypted in service-role-only studio_credentials and accessed only after user authorization; prevents browser secret reads.
-- Studio AI analysis calls the selected provider directly with the owner’s key and never falls back to Lovable AI; preserves separate provider billing.
+- Studio AI calls go through withAi (src/lib/studio-ai-default.server.ts): owner's saved key first, then the shared default endpoint keys from DEFAULT_AI_KEY/DEFAULT_AI_KEY_BACKUP secrets on key refusal (401/402/403/429); never Lovable AI — accounts without a working key still work and billing stays off workspace credits.
 - Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
 - Studio Meta posts advance via the existing protected publish-due schedule and manual refresh; asynchronous processing avoids long requests.
 
