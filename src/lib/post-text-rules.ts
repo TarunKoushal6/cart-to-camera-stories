@@ -1,7 +1,7 @@
 /** Splits/joins the publishing text for a clip. Stored clip.caption is the full Instagram/Facebook text. */
 export type PostText = { caption: string; description: string; hashtags: string };
 
-const STOP = new Set("the a an and or but of to in on for with your you is are be it this that my our at by from as how why what when who not no yes".split(" "));
+const STOP = new Set("the a an and or but of to in on for with your you is are be it this that my our at by from as how why what when who not no yes makes make made even just more most really does will have about into than then them they their very every".split(" "));
 const isTagLine = (line: string) => /^(#[\p{L}\p{N}_]+\s*)+$/u.test(line.trim());
 
 export function normalizeHashtags(raw: string): string[] {
