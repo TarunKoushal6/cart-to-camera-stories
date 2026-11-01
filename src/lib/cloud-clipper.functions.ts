@@ -71,7 +71,8 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
         id: jobId, url: `https://www.youtube.com/watch?v=${youtube}`,
       });
     } catch (e) {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: "Worker could not start. Check Settings and retry." }).eq("id", jobId);
+      const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
+      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: `Worker could not start: ${reason}` }).eq("id", jobId);
       throw e;
     }
     return { id: jobId, sourceId };
