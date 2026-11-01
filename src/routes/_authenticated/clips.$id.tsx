@@ -47,7 +47,7 @@ function PublishStudio() {
   if (error || !clip) return <p className="text-destructive">Clip not found.</p>;
 
   const fb = settings.find(s => s.kind === "facebook");
-  const platforms: { id: PlatformId; label: string; icon: typeof Youtube; connected: boolean; account?: string | null }[] = [
+  const platforms: { id: PlatformId; label: string; icon: typeof Youtube; connected: boolean; account?: string | null | undefined }[] = [
     { id: "youtube", label: "YouTube Shorts", icon: Youtube, connected: Boolean(yt?.channel), account: yt?.channel?.channel_name },
     { id: "instagram", label: "Instagram Reels", icon: Instagram, connected: Boolean(ig), account: ig?.username ? `@${ig.username}` : null },
     { id: "facebook", label: "Facebook Reels", icon: Facebook, connected: Boolean(fb), account: fb?.account_name },
