@@ -31,7 +31,7 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     const workerError = state.error || "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory.";
     // A worker that stopped part-way still keeps the clips it finished: those are attached below.
     if (state.status === "failed" && !targets.some(t => finished.has(t.id))) {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: workerError }).eq("id", job.id);
+      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: workerError }).eq("id", job.id).in("status", ACTIVE);
       return { status: "failed" };
     }
     if (state.status === "analyzed") {
