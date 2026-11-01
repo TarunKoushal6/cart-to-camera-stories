@@ -1,6 +1,7 @@
 import { segmentSchema, providerBaseUrl, compactTranscript, transcriptEnd, type Provider, type Cue } from "./studio-rules";
 import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
+import { AiRequestError } from "./studio-ai-default.server";
 
 /** Lists the models a key can use, so the settings page can offer a dropdown. */
 export async function fetchModels(provider: Provider, key: string, baseUrl?: string | null): Promise<string[]> {
@@ -47,8 +48,8 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(240000) });
   // Do not include provider bodies: some services can echo credentials in errors.
-  if (r.status === 401 || r.status === 403) throw new Error(`${provider} refused your AI key (${r.status}): it is invalid, revoked or lacks access. Save a new key in Settings.`);
-  if (!r.ok) throw new Error(`${provider} rejected the analysis (${r.status}). Check your key, model, quota and billing in Settings.`);
+  if (r.status === 401 || r.status === 403) throw new AiRequestError(`${provider} refused the AI key (${r.status}): it is invalid, revoked or lacks access. Save a new key in Settings.`, r.status);
+  if (!r.ok) throw new AiRequestError(`${provider} rejected the analysis (${r.status}). Check your key, model, quota and billing in Settings.`, r.status);
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
@@ -65,7 +66,7 @@ export async function reviewWithKey(provider:Provider,model:string,key:string,ba
   else if(provider==="anthropic"){endpoint="https://api.anthropic.com/v1/messages";headers={"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"};body={model,max_tokens:1800,messages:[{role:"user",content:prompt}]};}
   else{endpoint=`${providerBaseUrl(provider,baseUrl)}/chat/completions`;headers={"Content-Type":"application/json",Authorization:`Bearer ${key}`};body={model,messages:[{role:"user",content:prompt}],response_format:{type:"json_object"}};}
   const r=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
-  if(!r.ok)throw new Error(`${provider} rejected the clip review (${r.status}). Check your saved model, key and quota.`);
+  if(!r.ok)throw new AiRequestError(`${provider} rejected the clip review (${r.status}). Check your saved model, key and quota.`,r.status);
   const result=await r.json() as {choices?:{message:{content:string}}[];content?:{text?:string}[];candidates?:{content:{parts:{text?:string}[]}}[]};
   const text=result.choices?.[0]?.message.content??result.content?.map(c=>c.text||"").join("")??result.candidates?.[0]?.content.parts.map(p=>p.text||"").join("");
   if(!text)throw new Error("Your AI returned no critique.");
@@ -91,7 +92,7 @@ export async function writeClipText(provider: Provider, model: string, key: stri
     body = { model, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } };
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
-  if (!r.ok) throw new Error(`${provider} rejected the request (${r.status}). Check your key and model in Settings.`);
+  if (!r.ok) throw new AiRequestError(`${provider} rejected the request (${r.status}). Check your key and model in Settings.`, r.status);
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no text.");
