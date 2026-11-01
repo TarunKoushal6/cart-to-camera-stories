@@ -1,8 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { workerUrl, workerStatusSchema, cloudTargetSchema, workerHealthSchema, workerHttpError } from "@/lib/cloud-clipper-rules";
+import { workerUrl, workerStatusSchema, cloudTargetSchema, workerHealthSchema, workerHttpError, isStoppedJob, STOPPED_MESSAGE } from "@/lib/cloud-clipper-rules";
 import { canApproveClip } from "@/lib/clip-review-rules";
 
 describe("cloud clipping boundaries", () => {
+  it("treats only owner-stopped failed jobs as stopped", () => {
+    expect(isStoppedJob("failed", STOPPED_MESSAGE)).toBe(true);
+    expect(isStoppedJob("failed", "Worker failed")).toBe(false);
+    expect(isStoppedJob("rendering", STOPPED_MESSAGE)).toBe(false);
+  });
+  it("explains HTTP 429 as a full worker queue", () => {
+    expect(workerHttpError(429)).toMatch(/queue is full/);
+  });
   it("explains HTTP 530 as an offline tunnel or worker server", () => {
     expect(workerHttpError(530)).toMatch(/Cloudflare tunnel/);
     expect(workerHttpError(530)).toMatch(/Uvicorn/);
