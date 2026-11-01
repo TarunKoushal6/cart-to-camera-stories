@@ -154,17 +154,21 @@ def cookie_args():
         return ['--cookies-from-browser', browser]
     return []
 
-def extractor_args():
+def extractor_args(cookies=None):
+    """YOUTUBE_EXTRACTOR_ARGS always wins ('none' disables). Otherwise the tv/android default applies only
+    without cookies: YouTube rejects desktop web cookies sent with TV/Android player clients."""
     value = os.getenv('YOUTUBE_EXTRACTOR_ARGS', '').strip()
     if value.lower() in ('none', 'off', '0', 'false'): return []
-    return ['--extractor-args', value or DEFAULT_EXTRACTOR_ARGS]
+    if value: return ['--extractor-args', value]
+    if cookies: return []
+    return ['--extractor-args', DEFAULT_EXTRACTOR_ARGS]
 
 def is_cookie_error(output):
     s = output.lower()
     return any(k in s for k in COOKIE_ERRORS)
 
 def ytdlp_attempt(job, url, d, cookies):
-    extra = extractor_args() + cookies
+    extra = extractor_args(cookies) + cookies
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,

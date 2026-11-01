@@ -4,7 +4,7 @@ REM  Cutline Cloud Clipper - one-click Windows starter
 REM  1. Stops Edge (unlocks its cookie database) and any running Python worker
 REM  2. Uses C:\cutline as the worker folder
 REM  3. Downloads the latest app.py (keeps the old copy if the download fails)
-REM  4. Exports your YouTube cookies from Edge into cookies.txt
+REM  4. Keeps an existing cookies.txt, otherwise tries exporting Edge cookies
 REM  5. Starts the worker on port 8000
 REM
 REM  WARNING: step 1 closes EVERY msedge.exe and python.exe on this machine.
@@ -49,27 +49,32 @@ if errorlevel 1 (
   echo        app.py updated.
 )
 
-echo [4/5] Exporting YouTube cookies from Edge into cookies.txt ...
-REM A small helper script avoids fragile quoting inside "python -c".
+echo [4/5] Preparing YouTube cookies ...
+set "HAVE_COOKIES="
+if exist cookies.txt for %%F in (cookies.txt) do if %%~zF GTR 0 set "HAVE_COOKIES=1"
+if defined HAVE_COOKIES (
+  echo        Existing cookies.txt found - keeping it, skipping Edge export.
+  goto :cookies_done
+)
+REM Export to a temporary file so a failed export never touches cookies.txt.
 > export_cookies.py echo try:
 >> export_cookies.py echo     from yt_dlp.cookies import extract_cookies_from_browser
->> export_cookies.py echo     extract_cookies_from_browser("edge").save("cookies.txt", ignore_discard=True, ignore_expires=True)
+>> export_cookies.py echo     extract_cookies_from_browser("edge").save("cookies.new.txt", ignore_discard=True, ignore_expires=True)
 >> export_cookies.py echo     print("COOKIES_OK")
 >> export_cookies.py echo except Exception as e:
 >> export_cookies.py echo     print("COOKIE_NOTE:", e)
 python export_cookies.py > cookie_result.txt 2>&1
-findstr /b /c:"COOKIES_OK" cookie_result.txt >nul 2>&1
-if errorlevel 1 (
-  REM Export failed (often DPAPI under Administrator). Remove any partial or
-  REM empty cookies.txt so the worker never loads a broken cookie file.
-  if exist cookies.txt del /q cookies.txt >nul 2>&1
-  echo        No browser cookies exported - continuing without cookies.
+set "NEW_OK="
+findstr /b /c:"COOKIES_OK" cookie_result.txt >nul 2>&1 && if exist cookies.new.txt for %%F in (cookies.new.txt) do if %%~zF GTR 0 set "NEW_OK=1"
+if defined NEW_OK (
+  move /y cookies.new.txt cookies.txt >nul
+  echo        cookies.txt saved from Edge.
 ) else (
-  REM Delete the file if Edge had no cookies and an empty file was written.
-  for %%F in (cookies.txt) do if %%~zF EQU 0 del /q cookies.txt >nul 2>&1
-  if exist cookies.txt (echo        cookies.txt saved.) else (echo        Edge had no cookies - continuing without cookies.)
+  echo        No Edge cookies exported - continuing without cookies.
 )
+if exist cookies.new.txt del /q cookies.new.txt >nul 2>&1
 del /q export_cookies.py cookie_result.txt >nul 2>&1
+:cookies_done
 REM Cookies are optional: the worker uses bot-resistant player clients and
 REM retries without cookies if a cookie file is rejected.
 
