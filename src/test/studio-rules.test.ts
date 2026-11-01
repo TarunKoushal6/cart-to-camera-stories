@@ -19,6 +19,6 @@ describe("Repurposing rules",()=>{
     const text = JSON.stringify({ segments: [{ title: "ok", start: 0, end: 25, score: 80.6, reason: "" }, { title: "long", start: 0, end: 60, score: 50, reason: "" }, { title: "late", start: 990, end: 1015, score: 50, reason: "" }] });
     const r = parseAiSegments(text, 1000);
     expect(r.map((s) => s.title)).toEqual(["ok"]);
-    expect(r[0].score).toBe(81);
+    expect(r[0]?.score).toBe(81);
   });
 });
