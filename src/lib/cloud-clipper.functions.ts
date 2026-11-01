@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { workerUrl, workerProgressSchema } from "./cloud-clipper-rules";
+import { workerUrl, workerProgressSchema, musicModeSchema } from "./cloud-clipper-rules";
 import { youtubeId } from "./studio-rules";
 
 export const saveCloudWorker = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])

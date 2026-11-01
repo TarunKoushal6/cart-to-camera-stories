@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Download, Gauge, Loader2, RefreshCw, Timer, Zap } from "lucide-react";
+import { Check, Cloud, Download, Gauge, Loader2, Music, RefreshCw, Timer, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { startCloudCut, pollCloudCut, cloudCutProgress } from "@/lib/cloud-clipper.functions";
-import { CLOUD_STEPS, cloudJobProgress, downloadStats } from "@/lib/cloud-clipper-rules";
+import { CLOUD_STEPS, cloudJobProgress, downloadStats, MUSIC_MODES, type MusicMode } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -55,10 +55,10 @@ function useCloudCut(sourceId?: string) {
     finally { advancing.current = false; if (manual) setBusy(false); }
   }
 
-  async function begin(url: string) {
+  async function begin(url: string, music: MusicMode = "auto") {
     setBusy(true);
     try {
-      const r = await start({ data: { url, ...(sourceId ? { sourceId } : {}) } });
+      const r = await start({ data: { url, music, ...(sourceId ? { sourceId } : {}) } });
       setCurrentJobId(r.id); setCurrentSourceId(r.sourceId);
       await qc.invalidateQueries({ queryKey: ["studio-sources"] }); await qc.invalidateQueries({ queryKey: ["cloud-jobs"] });
       toast.success("Auto cut started — clips will wait for your approval");
@@ -118,16 +118,27 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Download; label: stri
   </div>;
 }
 
+const MUSIC_LABELS: Record<MusicMode, string> = { auto: "Auto — match each clip's vibe", off: "Off — original audio only", energetic: "Energetic",
+  chill: "Chill", emotional: "Emotional", dramatic: "Dramatic", inspiring: "Inspiring", funny: "Funny" };
+
 /** Dashboard hero: paste a link, one action, live progress below. */
 export function AutoCutCard() {
   const state = useCloudCut();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(""), [music, setMusic] = useState<MusicMode>("auto");
   return <section className="rounded-xl border border-border bg-card p-5 sm:p-7 space-y-5">
-    <form className="flex flex-col sm:flex-row gap-3" onSubmit={async (e) => { e.preventDefault(); if (await state.begin(url)) setUrl(""); }}>
+    <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (await state.begin(url, music)) setUrl(""); }}>
+    <div className="flex flex-col sm:flex-row gap-3">
       <Input aria-label="YouTube URL" placeholder="Paste a YouTube link — https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} type="url" required className="h-14 text-base bg-background" />
       <Button size="lg" disabled={state.busy || state.active} className="h-14 px-7 shrink-0 font-semibold">
         {state.busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Zap className="h-5 w-5" />}{state.active ? "Cutting…" : "Auto Cut Viral Shorts"}
       </Button>
+    </div>
+    <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><Music className="h-4 w-4 text-primary" />Background music
+      <select aria-label="Background music" className="studio-select h-9 w-auto" value={music} onChange={(e) => setMusic(e.target.value as MusicMode)}>
+        {MUSIC_MODES.map((m) => <option key={m} value={m}>{MUSIC_LABELS[m]}</option>)}
+      </select>
+      <span className="text-xs">Royalty-free, kept quiet and lowered automatically whenever someone speaks. No voiceover.</span>
+    </label>
     </form>
     <p className="text-xs text-muted-foreground">Downloads the video, finds every strong moment, cuts 9:16 shorts with burned-in captions and saves them below. Nothing posts until you approve it. Only use videos you own or have permission to repurpose.</p>
     <CloudProgress state={state} />
