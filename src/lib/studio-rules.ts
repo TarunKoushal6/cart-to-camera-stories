@@ -16,7 +16,10 @@ export function providerBaseUrl(provider: Provider, baseUrl?: string | null) {
 }
 export type Cue = { start: number; end: number; text: string };
 export const cueSchema = z.object({ start: z.number().min(0), end: z.number().min(0), text: z.string().min(1).max(4000) }).refine(c => c.end > c.start);
-export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000) }).refine(s => s.end - s.start >= 20 && s.end - s.start <= 30, "Clips must be 20–30 seconds long.");
+/** Background-music moods the AI may tag a clip with; the worker matches a royalty-free bed to it. */
+export const VIBES = ["energetic", "chill", "emotional", "dramatic", "inspiring", "funny"] as const;
+export type Vibe = typeof VIBES[number];
+export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000), vibe: z.enum(VIBES).optional() }).refine(s => s.end - s.start >= 20 && s.end - s.start <= 30, "Clips must be 20–30 seconds long.");
 /**
  * Reads AI segment JSON, tolerating code fences, a response cut off mid-way, and individual bad items.
  * Keeps every complete, valid segment that ends by `lastSecond`, up to 15.
@@ -35,6 +38,8 @@ export function parseAiSegments(text: string, lastSecond: number) {
   for (const raw of items) {
     const r = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : raw;
     if (r && typeof r === "object" && typeof (r as { score?: unknown }).score === "number") (r as { score: number }).score = Math.round((r as { score: number }).score);
+    // An unknown mood must not discard an otherwise good clip.
+    if (r && typeof r === "object") { const o = r as { vibe?: unknown }; const v = typeof o.vibe === "string" ? o.vibe.toLowerCase().trim() : undefined; if (v && (VIBES as readonly string[]).includes(v)) o.vibe = v; else delete o.vibe; }
     const s = segmentSchema.safeParse(r);
     if (s.success && s.data.end <= lastSecond) out.push(s.data);
     if (out.length === 15) break;
