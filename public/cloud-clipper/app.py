@@ -136,16 +136,61 @@ def usable_file(p):
     try: return p.is_file() and p.stat().st_size > 0
     except OSError: return False
 
+def json_cookies_to_netscape(cookies):
+    """Convert a browser-extension JSON cookie export (list, or {"cookies": [...]}) to Netscape text."""
+    if isinstance(cookies, dict): cookies = cookies.get('cookies', [])
+    if not isinstance(cookies, list): raise ValueError('JSON cookies must be a list')
+    lines = ['# Netscape HTTP Cookie File', '# Converted automatically from JSON by Cutline worker', '']
+    for c in cookies:
+        if not isinstance(c, dict) or not c.get('name') or not (c.get('domain') or c.get('host')): continue
+        domain = str(c.get('domain') or c.get('host')).strip()
+        host_only = c.get('hostOnly')
+        if host_only is None: host_only = not domain.startswith('.')
+        if not host_only and not domain.startswith('.'): domain = '.' + domain
+        flag = 'FALSE' if host_only else 'TRUE'
+        path = str(c.get('path') or '/')
+        secure = 'TRUE' if c.get('secure') else 'FALSE'
+        exp = c.get('expirationDate', c.get('expires', c.get('expiry', 0)))
+        try: exp = int(float(exp)) if exp and not c.get('session') else 0
+        except (TypeError, ValueError): exp = 0
+        if exp < 0: exp = 0
+        value = str(c.get('value', '')).replace('\t', ' ').replace('\n', '')
+        name = str(c['name']).replace('\t', ' ').replace('\n', '')
+        if c.get('httpOnly'): domain = '#HttpOnly_' + domain
+        lines.append('\t'.join([domain, flag, path, secure, str(exp), name, value]))
+    if len(lines) <= 3: raise ValueError('no valid cookies found in JSON')
+    return '\n'.join(lines) + '\n'
+
+def ensure_netscape(p):
+    """If a cookie file is a JSON export (starts with '[' or '{'), rewrite it in Netscape format in place,
+    keeping the original as <name>.json.bak. Returns True when the file is usable afterwards."""
+    try:
+        text = p.read_text(encoding='utf-8-sig', errors='replace')
+    except OSError as e:
+        log.warning('Cannot read cookies file %s: %s', p, e); return False
+    if not text.lstrip().startswith(('[', '{')): return True
+    try:
+        converted = json_cookies_to_netscape(json.loads(text))
+        p.with_name(p.name + '.json.bak').write_text(text, encoding='utf-8')
+        tmp = p.with_name(p.name + '.tmp')
+        tmp.write_text(converted, encoding='utf-8', newline='\n')
+        os.replace(tmp, p)
+        log.info('Converted JSON cookies to Netscape format: %s', p)
+        return True
+    except Exception as e:
+        log.warning('Could not convert JSON cookies in %s, ignoring: %s', p, e)
+        return False
+
 def cookie_args():
     """Cookies priority: YOUTUBE_COOKIES_FILE, then cookies.txt beside app.py or in ROOT, then an explicit
-    YOUTUBE_COOKIES_BROWSER. Empty files are ignored. No browser is used unless explicitly configured
-    (Windows/Admin Edge decryption fails with DPAPI, yt-dlp issue 10927)."""
+    YOUTUBE_COOKIES_BROWSER. Empty files are ignored; JSON exports are auto-converted to Netscape format.
+    No browser is used unless explicitly configured (Windows/Admin Edge decryption fails with DPAPI, yt-dlp issue 10927)."""
     env_file = os.getenv('YOUTUBE_COOKIES_FILE', '').strip()
     if env_file:
-        if usable_file(Path(env_file)): return ['--cookies', env_file]
-        log.warning('YOUTUBE_COOKIES_FILE missing or empty, ignoring: %s', env_file)
+        if usable_file(Path(env_file)) and ensure_netscape(Path(env_file)): return ['--cookies', env_file]
+        log.warning('YOUTUBE_COOKIES_FILE missing, empty or invalid, ignoring: %s', env_file)
     for c in (Path(__file__).resolve().parent / 'cookies.txt', ROOT / 'cookies.txt'):
-        if usable_file(c):
+        if usable_file(c) and ensure_netscape(c):
             log.info('Using YouTube cookies from %s', c)
             return ['--cookies', str(c)]
     browser = os.getenv('YOUTUBE_COOKIES_BROWSER', '').strip()
