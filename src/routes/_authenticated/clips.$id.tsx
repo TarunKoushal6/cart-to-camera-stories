@@ -1,46 +1,147 @@
-import { createFileRoute,Link } from "@tanstack/react-router";
-import { useQuery,useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState,useEffect,useRef } from "react";
-import { ArrowLeft,Download,Upload,Scissors,Instagram,Facebook,Mic,Sparkles,CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Loader2, Send, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { attachStudioVideo,publishStudioClip,saveClipPlan,approveClip,generateClipText,reviewClip } from "@/lib/studio.functions";
-import { clipCues,stamp,studioHead,type Cue } from "@/lib/studio-rules";
-import { generateVoiceover } from "@/lib/voice.functions";
-import { edgeVoices,viralReviewSchema,canApproveClip } from "@/lib/clip-review-rules";
-import { YouTubePublish } from "@/components/youtube-publish";
-import type {CaptionStyle} from "@/lib/caption-render";
+import { approveClip, getStudioSettings, publishStudioClip, reviewClip, saveClipPlan } from "@/lib/studio.functions";
+import { getYouTubeConnection, publishYouTubeClip, startYouTubeConnect } from "@/lib/youtube-publishing.functions";
+import { viralReviewSchema } from "@/lib/clip-review-rules";
+import { composeCaption, parsePostText, youtubeFields, type PostText } from "@/lib/post-text-rules";
+import { stamp, studioHead } from "@/lib/studio-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-export const Route=createFileRoute("/_authenticated/clips/$id")({head:()=>studioHead("Clip editor","Crop, caption, add voiceover and export a vertical clip for Instagram, Facebook and YouTube Shorts."),component:Editor});
-function Editor(){
- const {id}=Route.useParams(),qc=useQueryClient(),attach=useServerFn(attachStudioVideo),publish=useServerFn(publishStudioClip),savePlan=useServerFn(saveClipPlan),approve=useServerFn(approveClip),generate=useServerFn(generateClipText),review=useServerFn(reviewClip),speak=useServerFn(generateVoiceover);
- const {data:clip,isLoading,error}=useQuery({queryKey:["studio-clip",id],queryFn:async()=>{const r=await supabase.from("studio_clips").select("*,studio_sources(*)").eq("id",id).single();if(r.error)throw r.error;return r.data;}});
- const [file,setFile]=useState<File|null>(null),[output,setOutput]=useState<File|null>(null),[sourceUrl,setSourceUrl]=useState(""),[outputUrl,setOutputUrl]=useState(""),[savedUrl,setSavedUrl]=useState("");
- const [style,setStyle]=useState<CaptionStyle>("karaoke"),[framing,setFraming]=useState<"center"|"left"|"right">("center"),[caption,setCaption]=useState(""),[voiceover,setVoiceover]=useState(""),[voiceFile,setVoiceFile]=useState<File|null>(null),[busy,setBusy]=useState(false),[progress,setProgress]=useState(0),[platform,setPlatform]=useState<"instagram"|"facebook">("instagram"),[when,setWhen]=useState(""),[previewCaption,setPreviewCaption]=useState("");
- const [voice,setVoice]=useState<string>(edgeVoices[0].id),[voiceUrl,setVoiceUrl]=useState("");
- useEffect(()=>{if(!voiceFile){setVoiceUrl("");return;}const url=URL.createObjectURL(voiceFile);setVoiceUrl(url);return()=>URL.revokeObjectURL(url);},[voiceFile]);
- const video=useRef<HTMLVideoElement>(null);
- useEffect(()=>{if(clip){setCaption(clip.caption);setVoiceover(clip.voiceover||"");}},[clip?.id]);
- useEffect(()=>{if(!file)return;const url=URL.createObjectURL(file);setSourceUrl(url);return()=>URL.revokeObjectURL(url);},[file]);
- useEffect(()=>{if(!output)return;const url=URL.createObjectURL(output);setOutputUrl(url);return()=>URL.revokeObjectURL(url);},[output]);
- useEffect(()=>{let active=true;if(clip?.video_path)supabase.storage.from("videos").createSignedUrl(clip.video_path,3600).then(r=>{if(active)setSavedUrl(r.data?.signedUrl||"");});return()=>{active=false;};},[clip?.video_path]);
- if(isLoading)return <p className="text-muted-foreground">Loading clip…</p>;
- if(error||!clip)return <p className="text-destructive">Clip not found.</p>;
- const cues=(clip.studio_sources?.transcript || []) as Cue[];
- const localCues=clipCues(cues,clip.start_seconds,clip.end_seconds);
- const shown=outputUrl||savedUrl||sourceUrl;
- const dirty=caption!==clip.caption||voiceover!==(clip.voiceover||"");
- const approved=Boolean(clip.approved_at)&&!dirty&&!output;
- const reviewResult=viralReviewSchema.safeParse(clip.viral_review);
- const critique=reviewResult.success&&!dirty?reviewResult.data:null;
- async function saveOutput(){if(!output)return;setBusy(true);try{const {data:auth}=await supabase.auth.getUser();if(!auth.user)throw new Error("Sign in first.");const path=`${auth.user.id}/clips/${id}/${crypto.randomUUID()}.mp4`;const up=await supabase.storage.from("videos").upload(path,output,{contentType:"video/mp4"});if(up.error)throw up.error;await attach({data:{clipId:id,path,caption}});qc.invalidateQueries({queryKey:["studio-clip",id]});qc.invalidateQueries({queryKey:["studio-clip-count"]});setOutput(null);setOutputUrl("");toast.success("Clip saved for publishing");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't save clip");}finally{setBusy(false);}}
- return <div><Link to="/voiceover" className="inline-flex gap-2 items-center text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4"/>Voiceover studio</Link><div className="mt-5 flex flex-wrap items-end justify-between gap-3"><div><p className="studio-eyebrow">CLIP EDITOR · {stamp(clip.start_seconds)} — {stamp(clip.end_seconds)}</p><h1 className="font-display text-3xl font-bold mt-2">{clip.title}</h1></div><span className="text-primary text-sm">{Math.round(clip.end_seconds-clip.start_seconds)} seconds · 9:16</span></div>
- <div className="grid lg:grid-cols-[minmax(260px,380px)_1fr] gap-8 mt-8"><div><div className="aspect-[9/16] w-full max-w-[360px] mx-auto bg-secondary relative overflow-hidden rounded-md border border-border">{shown?<video ref={video} className="h-full w-full object-cover" src={shown} controls onLoadedMetadata={()=>{if(!outputUrl&&!savedUrl&&video.current)video.current.currentTime=clip.start_seconds;}} onTimeUpdate={()=>{if(outputUrl||savedUrl||!video.current)return;const now=video.current.currentTime;if(now>=clip.end_seconds){video.current.pause();video.current.currentTime=clip.start_seconds;}setPreviewCaption(cues.find(c=>c.start<=now&&c.end>now)?.text||"");}}/>:<div className="h-full flex flex-col justify-center items-center text-center p-6"><Scissors className="h-9 w-9 text-primary"/><p className="font-display text-xl mt-4">Ready for the cut</p><p className="text-sm text-muted-foreground mt-2">Add the original video to preview this moment.</p></div>}{sourceUrl&&!outputUrl&&!savedUrl&&previewCaption&&<div className={`caption-preview ${style}`} aria-hidden>{previewCaption}</div>}</div><p className="text-xs text-muted-foreground mt-3 text-center">{outputUrl||savedUrl?"Exported clip · Burned-in captions":"Source preview · Caption timing uses source transcript"}</p></div>
- <div className="space-y-7"><section className="border-b border-border pb-6"><h2 className="font-display text-lg font-bold">01 / Source footage</h2><label className="block text-sm mt-3">Original video (MP4)<Input aria-label="Source MP4" className="mt-2" type="file" accept="video/mp4" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f){setFile(f);setOutput(null);setOutputUrl("");setSavedUrl("");}}}/></label><p className="text-xs text-muted-foreground mt-2">YouTube streams cannot be downloaded here. Use your own original file. Local editing keeps source footage on this device.</p></section>
- <section className="border-b border-border pb-6"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-display text-lg font-bold">02 / Captions & voiceover</h2><Button size="sm" variant="outline" disabled={busy} onClick={async()=>{setBusy(true);try{const r=await generate({data:{clipId:id}});setCaption(r.caption);setVoiceover(r.voiceover);qc.invalidateQueries({queryKey:["studio-clip",id]});toast.success("Caption and voiceover created from transcript · Free");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't generate text");}finally{setBusy(false);}}}><Sparkles className="h-4 w-4"/>Auto-generate</Button></div><div className="grid sm:grid-cols-2 gap-4 mt-4"><label className="text-sm">Crop position<select aria-label="Crop position" className="studio-select mt-2" value={framing} onChange={e=>setFraming(e.target.value as typeof framing)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label><label className="text-sm">Caption style<select aria-label="Caption style" className="studio-select mt-2" value={style} onChange={e=>setStyle(e.target.value as CaptionStyle)}><option value="karaoke">Karaoke · Highlighted words</option><option value="bold">Bold · Impact</option><option value="clean">Clean · Minimal</option></select></label></div><label className="text-sm block mt-4">Voiceover script<Textarea className="mt-2" aria-label="Voiceover script" value={voiceover} onChange={e=>setVoiceover(e.target.value)} maxLength={4000} rows={3} placeholder="Spoken lines for this clip"/></label><label className="text-sm block mt-4">Custom voiceover audio (MP3, optional)<Input aria-label="Custom voiceover audio" className="mt-2" type="file" accept="audio/mpeg,audio/mp3" disabled={busy} onChange={e=>{setVoiceFile(e.target.files?.[0]||null);setOutput(null);setOutputUrl("");}}/></label><div className="flex flex-wrap items-end gap-3 mt-4"><label className="text-sm flex-1">Edge neural voice<select aria-label="Edge voice" className="studio-select mt-2" value={voice} onChange={e=>setVoice(e.target.value)}>{edgeVoices.map(v=><option value={v.id} key={v.id}>{v.label}</option>)}</select></label><Button variant="outline" disabled={busy||!voiceover.trim()} onClick={async()=>{setBusy(true);try{const result=await speak({data:{text:voiceover,voice:voice as typeof edgeVoices[number]["id"]}});const bytes=Uint8Array.from(atob(result.audio),c=>c.charCodeAt(0));setVoiceFile(new File([bytes],"edge-voiceover.mp3",{type:"audio/mpeg"}));setOutput(null);setOutputUrl("");await savePlan({data:{clipId:id,caption,voiceover}});await qc.invalidateQueries({queryKey:["studio-clip",id]});toast.success("Voiceover ready; export to include it");}catch(e){toast.error(e instanceof Error?e.message:"Voice generation unavailable");}finally{setBusy(false);}}}><Mic className="h-4 w-4"/>Generate voice</Button></div>{voiceUrl&&<audio aria-label="Voiceover preview" className="w-full mt-3" src={voiceUrl} controls/>}<p className="text-xs text-muted-foreground mt-2">Free Edge speech · No API key. Generated or uploaded voiceover replaces source audio on export. Edge availability is not guaranteed.</p>{!localCues.length&&<p className="text-accent text-xs mt-3">No timed captions for this moment. Import SRT/VTT in the source library before exporting.</p>}<div className="flex flex-wrap gap-3 mt-5"><Button variant="outline" disabled={busy} onClick={async()=>{setBusy(true);try{await savePlan({data:{clipId:id,caption,voiceover}});qc.invalidateQueries({queryKey:["studio-clip",id]});toast.success("Plan saved");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't save");}finally{setBusy(false);}}}>Save plan</Button><Button disabled={!file||busy||!localCues.length} onClick={async()=>{if(!file)return;setBusy(true);setProgress(0);try{const {renderClip}=await import("@/lib/caption-render");const result=await renderClip(file,clip.start_seconds,clip.end_seconds,localCues,style,framing,setProgress,voiceFile);setOutput(result);toast.success("Vertical clip exported");}catch(e){toast.error(e instanceof Error?e.message:"Export failed");}finally{setBusy(false);}}}><Scissors className="h-4 w-4"/>{busy?`Working… ${progress}%`:"Export 9:16 clip"}</Button></div>{output&&<div className="flex gap-3 mt-3"><a href={outputUrl} download="cutline-short.mp4" className="inline-flex"><Button variant="outline" size="sm"><Download className="h-4 w-4"/>Download</Button></a><Button variant="outline" size="sm" disabled={busy} onClick={saveOutput}><Upload className="h-4 w-4"/>Save for publishing</Button></div>}<p className="text-xs text-muted-foreground mt-3">Export runs on your device; keep this tab open. Saved clips must be under 50 MB.</p></section>
- <section className="border-b border-border pb-6"><h2 className="font-display text-lg font-bold">03 / Viral review & approval</h2><Button className="mt-4" variant="outline" disabled={busy} onClick={async()=>{setBusy(true);try{if(dirty)await savePlan({data:{clipId:id,caption,voiceover}});await review({data:{clipId:id}});await qc.invalidateQueries({queryKey:["studio-clip",id]});toast.success("Viral critique saved");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't review");}finally{setBusy(false);}}}><Sparkles className="h-4 w-4"/>Run AI viral review</Button><p className="text-xs text-muted-foreground mt-2">Your configured AI · Provider costs may apply. Scores estimate potential, not guaranteed views.</p>{critique&&<div className="mt-4 space-y-3"><p className="font-display text-xl font-bold">{critique.verdict}</p><div className="grid grid-cols-3 gap-3">{[["Hook",critique.hook],["Pacing",critique.pacing],["Retention",critique.retention]].map(([label,score])=><div className="border-b border-border pb-2" key={label}><span className="block text-xs text-muted-foreground">{label}</span><strong className="text-xl">{score}<span className="text-xs text-muted-foreground"> / 100</span></strong></div>)}</div><p className="text-sm">{critique.critique}</p><ul className="list-disc pl-5 text-sm space-y-2">{critique.feedback.map((f,i)=><li key={i}>{f}</li>)}</ul><p className="text-xs text-muted-foreground">{critique.evidence==="transcript"?"Transcript-based estimate; visual pacing is unverified.":"Structure-only estimate; no footage or speech was analyzed."}</p></div>}{approved?<p className="mt-3 text-sm flex gap-2 items-center text-primary"><CheckCircle2 className="h-4 w-4"/>Approved for posting. Editing the caption or voiceover resets approval.</p>:<p className="mt-3 text-sm text-muted-foreground">Nothing is posted without your approval. Save the exported clip, run your AI review, then approve it to unlock publishing.</p>}<Button className="mt-4" variant={approved?"outline":"default"} disabled={busy||approved||!canApproveClip(clip)||dirty||Boolean(output)} onClick={async()=>{setBusy(true);try{await approve({data:{clipId:id}});qc.invalidateQueries({queryKey:["studio-clip",id]});toast.success("Clip approved for posting");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't approve");}finally{setBusy(false);}}}><CheckCircle2 className="h-4 w-4"/>{approved?"Approved":"Approve for posting"}</Button></section>
- <section><h2 className="font-display text-lg font-bold">04 / Publish</h2><Textarea className="mt-4" aria-label="Post caption" value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Caption and hashtags" rows={4}/><div className="grid sm:grid-cols-2 gap-4 mt-4"><label className="text-sm">Platform<select className="studio-select mt-2" aria-label="Publishing platform" value={platform} onChange={e=>setPlatform(e.target.value as typeof platform)}><option value="instagram">Instagram Reels</option><option value="facebook">Facebook Page Reels</option></select></label><label className="text-sm">Schedule (optional)<Input className="mt-2" aria-label="Schedule time" type="datetime-local" value={when} onChange={e=>setWhen(e.target.value)}/></label></div><Button className="mt-5" disabled={busy||!clip.video_path||!approved} onClick={async()=>{setBusy(true);try{await publish({data:{clipId:id,platform,caption,scheduledAt:when?new Date(when).toISOString():null}});toast.success("Post queued; check Posts for publishing status");}catch(e){toast.error(e instanceof Error?e.message:"Couldn't publish");}finally{setBusy(false);}}}>{platform==="instagram"?<Instagram className="h-4 w-4"/>:<Facebook className="h-4 w-4"/>}{when?"Schedule clip":"Publish clip"}</Button>{!approved&&<span className="text-xs text-muted-foreground ml-3">Approve the clip first</span>}<Link to="/instagram" className="text-xs text-muted-foreground ml-4 underline">Manage accounts</Link></section><YouTubePublish clipId={id} defaultTitle={clip.title} ready={Boolean(clip.video_path)&&approved}/></div></div></div>;
+
+export const Route = createFileRoute("/_authenticated/clips/$id")({
+  head: () => studioHead("Publish clip", "Preview your vertical short, edit the caption and hashtags, and post to YouTube Shorts, Instagram Reels and Facebook Reels."),
+  component: PublishStudio,
+});
+
+type PlatformId = "youtube" | "instagram" | "facebook";
+
+function PublishStudio() {
+  const { id } = Route.useParams(), qc = useQueryClient();
+  const savePlan = useServerFn(saveClipPlan), approve = useServerFn(approveClip), review = useServerFn(reviewClip);
+  const publishMeta = useServerFn(publishStudioClip), publishYT = useServerFn(publishYouTubeClip);
+  const getSettings = useServerFn(getStudioSettings), getYT = useServerFn(getYouTubeConnection), connectYT = useServerFn(startYouTubeConnect);
+
+  const { data: clip, isLoading, error } = useQuery({ queryKey: ["studio-clip", id], queryFn: async () => {
+    const r = await supabase.from("studio_clips").select("*").eq("id", id).single(); if (r.error) throw r.error; return r.data; } });
+  const { data: settings = [] } = useQuery({ queryKey: ["studio-settings"], queryFn: () => getSettings() });
+  const { data: yt } = useQuery({ queryKey: ["youtube-connection"], queryFn: () => getYT() });
+  const { data: ig } = useQuery({ queryKey: ["ig"], queryFn: async () => (await supabase.from("instagram_accounts").select("username, connected_at").maybeSingle()).data });
+
+  const [text, setText] = useState<PostText>({ caption: "", description: "", hashtags: "" });
+  const [selected, setSelected] = useState<Record<PlatformId, boolean>>({ youtube: true, instagram: true, facebook: true });
+  const [privacy, setPrivacy] = useState<"public" | "unlisted" | "private">("public");
+  const [when, setWhen] = useState(""), [busy, setBusy] = useState<"" | "now" | "schedule">(""), [videoUrl, setVideoUrl] = useState("");
+
+  useEffect(() => { if (clip) setText(parsePostText(clip.caption, clip.title, clip.reason)); }, [clip?.id]);
+  useEffect(() => { let active = true; setVideoUrl("");
+    if (clip?.video_path) supabase.storage.from("videos").createSignedUrl(clip.video_path, 3600).then(r => { if (active) setVideoUrl(r.data?.signedUrl || ""); });
+    return () => { active = false; }; }, [clip?.video_path]);
+
+  if (isLoading) return <p className="text-muted-foreground">Loading clip…</p>;
+  if (error || !clip) return <p className="text-destructive">Clip not found.</p>;
+
+  const fb = settings.find(s => s.kind === "facebook");
+  const platforms: { id: PlatformId; label: string; icon: typeof Youtube; connected: boolean; account?: string | null }[] = [
+    { id: "youtube", label: "YouTube Shorts", icon: Youtube, connected: Boolean(yt?.channel), account: yt?.channel?.channel_name },
+    { id: "instagram", label: "Instagram Reels", icon: Instagram, connected: Boolean(ig), account: ig?.username ? `@${ig.username}` : null },
+    { id: "facebook", label: "Facebook Reels", icon: Facebook, connected: Boolean(fb), account: fb?.account_name },
+  ];
+  const targets = platforms.filter(p => p.connected && selected[p.id]);
+  const critique = viralReviewSchema.safeParse(clip.viral_review);
+  const ready = Boolean(clip.video_path);
+
+  async function connectYouTube() {
+    try { const r = await connectYT(); window.location.href = r.url; }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't start YouTube connection. Check YouTube setup in Settings."); }
+  }
+
+  async function post(mode: "now" | "schedule") {
+    if (!clip || !targets.length) return;
+    const scheduledAt = mode === "schedule" && when ? new Date(when).toISOString() : null;
+    if (mode === "schedule" && (!scheduledAt || Date.parse(scheduledAt) <= Date.now())) { toast.error("Choose a future time to schedule."); return; }
+    setBusy(mode);
+    try {
+      const caption = composeCaption(text);
+      // Clicking Post/Schedule is the owner's explicit approval; the AI review must exist before approval.
+      if (caption !== clip.caption) await savePlan({ data: { clipId: id, caption, voiceover: clip.voiceover || "" } });
+      if (!critique.success) { toast.message("Running AI viral review first…"); await review({ data: { clipId: id } }); }
+      await approve({ data: { clipId: id } });
+      const results = await Promise.allSettled(targets.map(p => p.id === "youtube"
+        ? publishYT({ data: { clipId: id, ...youtubeFields(text), privacy: scheduledAt ? "public" : privacy, scheduledAt, madeForKids: false } })
+        : publishMeta({ data: { clipId: id, platform: p.id, caption, scheduledAt } })));
+      results.forEach((r, i) => {
+        const name = targets[i]!.label;
+        if (r.status === "fulfilled") toast.success(scheduledAt ? `${name}: scheduled` : `${name}: posting started`);
+        else toast.error(`${name}: ${r.reason instanceof Error ? r.reason.message : "failed"}`);
+      });
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't post this clip"); }
+    finally { setBusy(""); qc.invalidateQueries({ queryKey: ["studio-clip", id] }); }
+  }
+
+  return <div>
+    <Link to="/dashboard" className="inline-flex gap-2 items-center text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Dashboard</Link>
+    <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
+      <div><p className="studio-eyebrow">PUBLISH · {stamp(clip.start_seconds)} — {stamp(clip.end_seconds)} · {Math.round(clip.end_seconds - clip.start_seconds)}s · 9:16</p>
+        <h1 className="font-display text-3xl font-bold mt-2">{clip.title}</h1></div>
+      {critique.success && <span className={`text-sm font-medium ${critique.data.verdict === "Viral" ? "text-primary" : "text-accent"}`}>AI verdict: {critique.data.verdict} · Hook {critique.data.hook}</span>}
+    </div>
+
+    <div className="grid lg:grid-cols-[minmax(260px,360px)_1fr] gap-10 mt-8">
+      <div>
+        <div className="aspect-[9/16] w-full max-w-[360px] mx-auto bg-secondary overflow-hidden rounded-md border border-border">
+          {videoUrl ? <video className="h-full w-full object-cover" src={videoUrl} controls playsInline aria-label="Clip preview" />
+            : <div className="h-full flex flex-col justify-center items-center text-center p-6"><Film className="h-9 w-9 text-primary" />
+              <p className="font-display text-xl mt-4">{ready ? "Loading video…" : "Not rendered yet"}</p>
+              {!ready && <p className="text-sm text-muted-foreground mt-2">Use Auto Cut Viral Shorts on the dashboard to render this clip.</p>}</div>}
+        </div>
+      </div>
+
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <label className="text-sm block">Caption<Input aria-label="Caption" className="mt-2" value={text.caption} maxLength={150} onChange={e => setText({ ...text, caption: e.target.value })} placeholder="Hook line viewers see first" /></label>
+          <label className="text-sm block">Description<Textarea aria-label="Description" className="mt-2" rows={4} maxLength={1800} value={text.description} onChange={e => setText({ ...text, description: e.target.value })} /></label>
+          <label className="text-sm block">Hashtags<Input aria-label="Hashtags" className="mt-2" value={text.hashtags} onChange={e => setText({ ...text, hashtags: e.target.value })} placeholder="#shorts #reels" /></label>
+          <p className="text-xs text-muted-foreground">YouTube uses the caption as the title. Instagram and Facebook get caption, description and hashtags together.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-bold">Post to</h2>
+          <ul className="mt-3 divide-y divide-border border-y border-border">
+            {platforms.map(p => <li key={p.id} className="flex items-center gap-3 py-3">
+              <input type="checkbox" aria-label={`Post to ${p.label}`} className="h-4 w-4 accent-[var(--primary)]" disabled={!p.connected} checked={p.connected && selected[p.id]} onChange={e => setSelected({ ...selected, [p.id]: e.target.checked })} />
+              <p.icon className="h-5 w-5" />
+              <div className="flex-1 min-w-0"><p className="font-medium">{p.label}</p>{p.account && <p className="text-xs text-muted-foreground truncate">{p.account}</p>}</div>
+              {p.connected
+                ? <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-xs font-medium"><CheckCircle2 className="h-3 w-3" />Connected</span>
+                : <span className="flex items-center gap-3"><span className="rounded-full bg-muted text-muted-foreground px-2.5 py-0.5 text-xs font-medium">Disconnected</span>
+                  {p.id === "youtube" ? <Button size="sm" variant="outline" onClick={connectYouTube}>Connect</Button>
+                    : <Button size="sm" variant="outline" asChild><Link to="/instagram">Connect</Link></Button>}</span>}
+            </li>)}
+          </ul>
+          {selected.youtube && yt?.channel && <label className="text-sm mt-4 flex items-center gap-3">YouTube visibility
+            <select aria-label="YouTube visibility" className="studio-select w-40" value={privacy} onChange={e => setPrivacy(e.target.value as typeof privacy)}>
+              <option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>}
+        </section>
+
+        <section className="space-y-4">
+          <Button size="lg" className="w-full sm:w-auto h-12 px-8 text-base" disabled={!!busy || !ready || !targets.length} onClick={() => post("now")}>
+            {busy === "now" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}{busy === "now" ? "Posting…" : `Post Now${targets.length ? ` to ${targets.length}` : ""}`}</Button>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">Or schedule for<Input aria-label="Schedule time" className="mt-2 w-60" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></label>
+            <Button variant="outline" disabled={!!busy || !ready || !targets.length || !when} onClick={() => post("schedule")}>
+              {busy === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}Schedule</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {!ready ? "This clip has no rendered video yet." : !targets.length ? "Connect and tick at least one platform." : "Pressing Post Now or Schedule approves this clip. Nothing posts until you do."}
+            {" "}<Link to="/schedule" className="underline">See posts</Link></p>
+        </section>
+      </div>
+    </div>
+  </div>;
 }
