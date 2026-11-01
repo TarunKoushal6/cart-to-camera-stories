@@ -32,7 +32,7 @@ export const resetCloudWorker = createServerFn({ method: "POST" }).middleware([r
   });
 
 export const startCloudCut = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(d => z.object({ url: z.string().max(2000), sourceId: z.string().uuid().optional() }).parse(d))
+  .inputValidator(d => z.object({ url: z.string().max(2000), sourceId: z.string().uuid().optional(), music: musicModeSchema.default("auto") }).parse(d))
   .handler(async ({ data, context }) => {
     const youtube = youtubeId(data.url);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -64,7 +64,7 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
     if (existing) return { id: existing.id, sourceId };
     const jobId = crypto.randomUUID();
     const { error } = await supabaseAdmin.from("studio_cloud_jobs").insert({ id: jobId, user_id: context.userId,
-      source_id: sourceId, worker_url: worker.url, worker_job_id: jobId });
+      source_id: sourceId, worker_url: worker.url, worker_job_id: jobId, music: data.music });
     if (error) throw new Error("Couldn't create clipping job.");
     try {
       await callWorker(worker.url, worker.token, "/jobs", {
