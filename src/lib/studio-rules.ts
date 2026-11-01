@@ -17,6 +17,31 @@ export function providerBaseUrl(provider: Provider, baseUrl?: string | null) {
 export type Cue = { start: number; end: number; text: string };
 export const cueSchema = z.object({ start: z.number().min(0), end: z.number().min(0), text: z.string().min(1).max(4000) }).refine(c => c.end > c.start);
 export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000) }).refine(s => s.end - s.start >= 20 && s.end - s.start <= 30, "Clips must be 20–30 seconds long.");
+/**
+ * Reads AI segment JSON, tolerating code fences, a response cut off mid-way, and individual bad items.
+ * Keeps every complete, valid segment that ends by `lastSecond`, up to 15.
+ */
+export function parseAiSegments(text: string, lastSecond: number) {
+  const clean = text.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  let items: unknown[] = [];
+  try {
+    const j = JSON.parse(clean) as { segments?: unknown[] } | unknown[];
+    items = Array.isArray(j) ? j : Array.isArray(j?.segments) ? j.segments : [];
+  } catch {
+    // Truncated output: salvage each complete flat {...} object.
+    for (const m of clean.matchAll(/\{[^{}]*\}/g)) { try { items.push(JSON.parse(m[0])); } catch { /* incomplete */ } }
+  }
+  const out: z.infer<typeof segmentSchema>[] = [];
+  for (const raw of items) {
+    const r = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : raw;
+    if (r && typeof r === "object" && typeof (r as { score?: unknown }).score === "number") (r as { score: number }).score = Math.round((r as { score: number }).score);
+    const s = segmentSchema.safeParse(r);
+    if (s.success && s.data.end <= lastSecond) out.push(s.data);
+    if (out.length === 15) break;
+  }
+  if (!out.length) throw new Error("The AI returned no usable 20–30 second clips. Try again.");
+  return out;
+}
 export function youtubeId(value: string) {
   let u: URL;
   try { u = new URL(value); } catch { throw new Error("Enter a YouTube video URL."); }

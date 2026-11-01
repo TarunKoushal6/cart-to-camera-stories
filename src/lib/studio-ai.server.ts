@@ -53,10 +53,7 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
-  const parsed = z.object({ segments: z.array(segmentSchema).min(1).max(15) }).parse(JSON.parse(text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")));
-  const last = cues.length?transcriptEnd(cues)+1:structure?.duration||0;
-  if (parsed.segments.some(s => s.end > last)) throw new Error("The provider returned a segment outside the transcript. Try again.");
-  return parsed.segments;
+  return parseAiSegments(text, cues.length ? transcriptEnd(cues) + 1 : structure?.duration || 0);
 }
 
 export async function reviewWithKey(provider:Provider,model:string,key:string,baseUrl:string|null,title:string,cues:Cue[],caption:string,voiceover:string,duration:number) {
