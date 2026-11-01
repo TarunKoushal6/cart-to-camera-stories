@@ -415,7 +415,7 @@ def download(job, url):
                     if time.time() - last >= 2:
                         last = time.time(); write(job, progress={'percent': min(100, round(s.end / total * 100, 1))})
         if not cues: raise StepError('No speech found in this video, so no captions could be made.')
-        if len(cues) > 15000: raise StepError('Transcript is too long (over 15,000 words).')
+        if len(cues) > 75000: raise StepError('Transcript is too long (over 75,000 words).')
         write(job, status='analyzed', stage='analyzed', progress={}, duration=duration, cues=cues, source=str(source))
         audio.unlink(missing_ok=True)
     except StepError as e:

@@ -68,3 +68,20 @@ describe("cloud job steps", () => {
     expect(cloudJobProgress("transcribing", { stage: "fetching_subtitles" }).label).toBe("Extracting speech/captions");
   });
 });
+describe("long transcripts", () => {
+  it("accepts 75,000 words from the worker", async () => {
+    const { workerStatusSchema } = await import("@/lib/cloud-clipper-rules");
+    const cues = Array.from({ length: 75000 }, (_, i) => ({ start: i * 0.2, end: i * 0.2 + 0.2, text: "w" }));
+    expect(workerStatusSchema.safeParse({ status: "analyzed", cues }).success).toBe(true);
+    expect(workerStatusSchema.safeParse({ status: "analyzed", cues: [...cues, cues[0]] }).success).toBe(false);
+  });
+  it("sends the AI compact [MM:SS] lines, with hours past one hour", async () => {
+    const { compactTranscript, transcriptEnd } = await import("@/lib/studio-rules");
+    const text = compactTranscript([
+      { start: 65, end: 65.4, text: "Hello" }, { start: 65.4, end: 66, text: "everyone." },
+      { start: 3725, end: 3726, text: "Next" }, { start: 3726, end: 3727, text: "part" },
+    ]);
+    expect(text).toBe("[01:05] Hello everyone.\n[1:02:05] Next part");
+    expect(transcriptEnd(Array.from({ length: 75000 }, (_, i) => ({ start: i, end: i + 1, text: "w" })))).toBe(75000);
+  });
+});

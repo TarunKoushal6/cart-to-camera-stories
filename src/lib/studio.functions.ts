@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl } from "./studio-rules";
+import { providers, youtubeId, cueSchema, segmentSchema, endpointSchema, providerBaseUrl, transcriptEnd } from "./studio-rules";
 import { canApproveClip, viralReviewSchema } from "./clip-review-rules";
 
 export const importYouTube = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({url:z.string().max(2000)}).parse(d)).handler(async({data,context})=>{
@@ -12,7 +12,7 @@ export const importYouTube = createServerFn({method:"POST"}).middleware([require
   if(error) throw new Error(error.message);
   return source;
 });
-export const saveTranscript = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({sourceId:z.string().uuid(),cues:z.array(cueSchema).min(1).max(15000)}).parse(d)).handler(async({data,context})=>{
+export const saveTranscript = createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({sourceId:z.string().uuid(),cues:z.array(cueSchema).min(1).max(75000)}).parse(d)).handler(async({data,context})=>{
   const { error } = await context.supabase.from("studio_sources").update({transcript:data.cues.map(c=>({...c})),transcript_status:"imported"}).eq("id",data.sourceId);
   if(error) throw new Error(error.message);
   return {saved:true};
@@ -57,7 +57,7 @@ export const analyzeSource = createServerFn({method:"POST"}).middleware([require
   if(!secret) throw new Error("Secure key storage is not configured.");
   const {decrypt}=await import("./studio-crypto.server");
   const {analyzeWithKey}=await import("./studio-ai.server");
-  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url,{title:source.title,duration:duration||Math.max(...cues.map(c=>c.end)),outline:data.outline||""});
+  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url,{title:source.title,duration:duration||transcriptEnd(cues),outline:data.outline||""});
   const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:cues.filter(c=>c.end>s.start&&c.start<s.end).map(c=>c.text).join(" ").slice(0,2200)||s.title})));
   if(error) throw new Error(error.message);
   return {count:segments.length};
