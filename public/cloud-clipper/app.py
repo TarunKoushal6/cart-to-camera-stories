@@ -548,7 +548,7 @@ def music_mix_args(duration, volume):
     return ['-filter_complex',
             f'[0:a]aresample=48000,asplit=2[sp][sc];'
             f'[1:a]aresample=48000,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
-            f'[m][sc]sidechaincompress=threshold=0.015:ratio=12:attack=20:release=450[duck];'
+            f'[m][sc]sidechaincompress=threshold=0.05:ratio=3:attack=20:release=450[duck];'
             f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
             '-map', '0:v', '-map', '[a]']
 
