@@ -26,7 +26,7 @@ export type WorkerProgress = z.infer<typeof workerProgressSchema>;
 export const workerStatusSchema = z.object({
   status: z.enum(["transcribing", "analyzed", "rendering", "complete", "failed"]),
   duration: z.number().min(20).max(86400).optional(),
-  cues: z.array(cueSchema).max(15000).optional(),
+  cues: z.array(cueSchema).max(75000).optional(),
   completed: z.array(z.string().uuid()).max(15).optional(),
   error: z.string().max(20000).optional(),
 }).merge(workerProgressSchema);

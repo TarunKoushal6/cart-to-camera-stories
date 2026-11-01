@@ -41,6 +41,33 @@ export function parseTranscript(input: string): Cue[] {
   }
   return cues.sort((a,b) => a.start-b.start);
 }
+/** Last cue end; loop instead of Math.max(...) so 75k-word transcripts don't overflow the call stack. */
+export function transcriptEnd(cues: Cue[]) {
+  let end = 0;
+  for (const c of cues) if (c.end > end) end = c.end;
+  return end;
+}
+export function formatStamp(seconds: number) {
+  const t = Math.floor(seconds), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+/** Compact "[MM:SS] sentence" lines for AI analysis: breaks at sentence ends, pauses over 1.5s or ~8s of speech. */
+export function compactTranscript(cues: Cue[], maxLineSeconds = 8) {
+  const lines: string[] = [];
+  let start = 0, words: string[] = [], lastEnd = 0;
+  const flush = () => { if (words.length) lines.push(`[${formatStamp(start)}] ${words.join(" ")}`); words = []; };
+  for (const c of cues) {
+    const text = c.text.trim();
+    if (!text) continue;
+    if (words.length && (c.start - lastEnd > 1.5 || c.start - start >= maxLineSeconds)) flush();
+    if (!words.length) start = c.start;
+    words.push(text);
+    lastEnd = c.end;
+    if (/[.!?।]["')\]]*$/.test(text)) flush();
+  }
+  flush();
+  return lines.join("\n");
+}
 export function clipCues(cues: Cue[], start: number, end: number): Cue[] {
   return cues.filter(c => c.end > start && c.start < end).map(c => ({ ...c, start: Math.max(0, c.start-start), end: Math.min(end-start,c.end-start) }));
 }
