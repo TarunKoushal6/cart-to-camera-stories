@@ -93,8 +93,9 @@ def explain_download(output):
                 '2) Export cookies.txt from a browser logged into YouTube (Netscape format, e.g. "Get cookies.txt LOCALLY" extension) '
                 'and put it next to app.py, or set YOUTUBE_COOKIES_FILE=/path/cookies.txt. '
                 '3) Or set YOUTUBE_COOKIES_BROWSER=chrome if YouTube is logged in on this machine\'s browser. '
-                'On Windows, Edge cookies are used automatically if nothing else is set. '
-                'Do not force player clients unless needed (YOUTUBE_EXTRACTOR_ARGS); spoofed clients often trigger bot checks. '
+                'On Windows as Administrator, browser cookies often fail with a DPAPI error; use cookies.txt instead. '
+                '4) Try other player clients, e.g. YOUTUBE_EXTRACTOR_ARGS="youtube:player_client=tv,web_safari" '
+                '(default is ' + DEFAULT_EXTRACTOR_ARGS + '; set YOUTUBE_EXTRACTOR_ARGS=none to disable). '
                 'Datacenter/VPS IPs may still need cookies or a residential proxy.')
     if 'private video' in s or 'members-only' in s or 'join this channel' in s:
         return 'This video is private or members-only.'
@@ -126,30 +127,44 @@ def num(v):
     except (TypeError, ValueError): return None
 
 PROGRESS = 'download:CUTLINE %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s'
+# Player clients that usually avoid the proof-of-origin bot check on VPS/datacenter IPs without cookies.
+DEFAULT_EXTRACTOR_ARGS = 'youtube:player_client=tv,android,web_safari'
+COOKIE_ERRORS = ('failed to decrypt with dpapi', 'dpapi', 'could not find cookies', 'could not copy', 'cookie database',
+                 'failed to load cookies', 'cookies file', 'netscape format')
+
+def usable_file(p):
+    try: return p.is_file() and p.stat().st_size > 0
+    except OSError: return False
 
 def cookie_args():
-    """Cookies priority: YOUTUBE_COOKIES_FILE, then cookies.txt beside app.py or in ROOT, then YOUTUBE_COOKIES_BROWSER."""
+    """Cookies priority: YOUTUBE_COOKIES_FILE, then cookies.txt beside app.py or in ROOT, then an explicit
+    YOUTUBE_COOKIES_BROWSER. Empty files are ignored. No browser is used unless explicitly configured
+    (Windows/Admin Edge decryption fails with DPAPI, yt-dlp issue 10927)."""
     env_file = os.getenv('YOUTUBE_COOKIES_FILE', '').strip()
     if env_file:
-        if not Path(env_file).is_file(): log.warning('YOUTUBE_COOKIES_FILE not found: %s', env_file)
-        return ['--cookies', env_file]
+        if usable_file(Path(env_file)): return ['--cookies', env_file]
+        log.warning('YOUTUBE_COOKIES_FILE missing or empty, ignoring: %s', env_file)
     for c in (Path(__file__).resolve().parent / 'cookies.txt', ROOT / 'cookies.txt'):
-        if c.is_file():
+        if usable_file(c):
             log.info('Using YouTube cookies from %s', c)
             return ['--cookies', str(c)]
     browser = os.getenv('YOUTUBE_COOKIES_BROWSER', '').strip()
-    if not browser and os.name == 'nt':
-        browser = 'edge'  # Windows default: Edge is always installed.
     if browser:
         log.info('Using YouTube cookies from browser %s', browser)
         return ['--cookies-from-browser', browser]
     return []
 
-def ytdlp(job, url, d):
-    extra = []
-    extractor = os.getenv('YOUTUBE_EXTRACTOR_ARGS', '').strip()
-    if extractor: extra += ['--extractor-args', extractor]
-    extra += cookie_args()
+def extractor_args():
+    value = os.getenv('YOUTUBE_EXTRACTOR_ARGS', '').strip()
+    if value.lower() in ('none', 'off', '0', 'false'): return []
+    return ['--extractor-args', value or DEFAULT_EXTRACTOR_ARGS]
+
+def is_cookie_error(output):
+    s = output.lower()
+    return any(k in s for k in COOKIE_ERRORS)
+
+def ytdlp_attempt(job, url, d, cookies):
+    extra = extractor_args() + cookies
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
@@ -177,8 +192,19 @@ def ytdlp(job, url, d):
             write(job, stage='downloading', progress={'downloaded': base + dl, 'total': base + total if total else None,
                                                       'speed': speed, 'eta': eta, 'part': part})
     code = p.wait()
-    output = '\n'.join(tail)
     source = next((f for f in d.glob('source.*') if f.suffix in ['.mp4', '.webm', '.mkv']), None)
+    return code, source, '\n'.join(tail)
+
+def ytdlp(job, url, d):
+    cookies = cookie_args()
+    code, source, output = ytdlp_attempt(job, url, d, cookies)
+    if (code or source is None) and cookies and is_cookie_error(output):
+        log.warning('yt-dlp cookie error (%s); retrying once without cookies', output[-500:])
+        for f in d.glob('source.*'):
+            try: f.unlink()
+            except OSError: pass
+        write(job, stage='downloading', progress={})
+        code, source, output = ytdlp_attempt(job, url, d, [])
     if code or source is None:
         log.error('yt-dlp failed (%s): %s', code, output[-3000:])
         raise StepError(explain_download(output))
