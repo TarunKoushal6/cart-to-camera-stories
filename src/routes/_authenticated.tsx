@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { Scissors, CalendarClock, Instagram, LogOut, BarChart3, Settings2, Mic } from "lucide-react";
+import { Scissors, CalendarClock, Instagram, LogOut, BarChart3, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,7 +12,6 @@ export const Route = createFileRoute("/_authenticated")({
 
 const nav = [
   { to: "/dashboard", label: "Studio", icon: Scissors },
-  { to: "/voiceover", label: "Voiceover", icon: Mic },
   { to: "/schedule", label: "Posts", icon: CalendarClock },
   { to: "/instagram", label: "Social accounts", icon: Instagram },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
