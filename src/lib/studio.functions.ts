@@ -52,12 +52,11 @@ export const analyzeSource = createServerFn({method:"POST"}).middleware([require
   if(!cues.length&&!duration)throw new Error("Enter the video duration for structure-only suggestions, or add audio / a transcript.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
-  if(!credential) throw new Error("Add your own AI key in Settings first.");
   const secret=process.env["STUDIO_ENCRYPTION_KEY"];
   if(!secret) throw new Error("Secure key storage is not configured.");
-  const {decrypt}=await import("./studio-crypto.server");
+  const {withAi}=await import("./studio-ai-default.server");
   const {analyzeWithKey}=await import("./studio-ai.server");
-  const segments=await analyzeWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),cues,credential.base_url,{title:source.title,duration:duration||transcriptEnd(cues),outline:data.outline||""});
+  const segments=await withAi(credential,secret,c=>analyzeWithKey(c.provider,c.model,c.key,cues,c.baseUrl,{title:source.title,duration:duration||transcriptEnd(cues),outline:data.outline||""}));
   const {error}=await context.supabase.from("studio_clips").insert(segments.map(s=>({user_id:context.userId,source_id:source.id,title:s.title,start_seconds:s.start,end_seconds:s.end,score:s.score,reason:s.reason,caption:cues.filter(c=>c.end>s.start&&c.start<s.end).map(c=>c.text).join(" ").slice(0,2200)||s.title})));
   if(error) throw new Error(error.message);
   return {count:segments.length};
@@ -150,11 +149,10 @@ export const reviewClip=createServerFn({method:"POST"}).middleware([requireSupab
   if(!clip)throw new Error("Clip not found.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:credential}=await supabaseAdmin.from("studio_credentials").select("*").eq("user_id",context.userId).eq("kind","ai").maybeSingle();
-  if(!credential)throw new Error("Save your own AI endpoint, key and model in Settings before reviewing.");
   const secret=process.env["STUDIO_ENCRYPTION_KEY"];if(!secret)throw new Error("Secure key storage is not configured.");
-  const {decrypt}=await import("./studio-crypto.server");const {reviewWithKey}=await import("./studio-ai.server");
+  const {withAi}=await import("./studio-ai-default.server");const {reviewWithKey}=await import("./studio-ai.server");
   const cues=z.array(cueSchema).parse(clip.studio_sources?.transcript||[]).filter(c=>c.end>clip.start_seconds&&c.start<clip.end_seconds);
-  const review=viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(credential.provider),credential.model,await decrypt(credential.encrypted_key,secret),credential.base_url,clip.title,cues,clip.caption,clip.voiceover||"",clip.end_seconds-clip.start_seconds));
+  const review=viralReviewSchema.parse(await withAi(credential,secret,c=>reviewWithKey(c.provider,c.model,c.key,c.baseUrl,clip.title,cues,clip.caption,clip.voiceover||"",clip.end_seconds-clip.start_seconds)));
   // Compare against the content reviewed; a simultaneous edit must not get a stale approval.
   let query=context.supabase.from("studio_clips").update({viral_review:review,approved_at:null}).eq("id",clip.id).eq("caption",clip.caption).eq("start_seconds",clip.start_seconds).eq("end_seconds",clip.end_seconds);
   query=clip.voiceover===null?query.is("voiceover",null):query.eq("voiceover",clip.voiceover);

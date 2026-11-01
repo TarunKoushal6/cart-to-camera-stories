@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { cloudTargetSchema, workerStatusSchema } from "./cloud-clipper-rules";
-import { providers } from "./studio-rules";
 
 /** Called only after session or schedule authorization; always bound to the job owner. */
 export async function advanceCloudCut(data: {jobId:string}, context: {supabase:SupabaseClient<Database>;userId:string}) {
@@ -19,10 +18,10 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     try {
     const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
     const ai = settings?.find(s => s.kind === "ai");
-    const { decrypt } = await import("./studio-crypto.server");
     const { callWorker, resolveWorker } = await import("./cloud-clipper.server");
     const worker = await resolveWorker(settings?.find(s => s.kind === "cloud_worker"), secret);
-    if (worker.url !== job.worker_url || !ai) throw new Error("Restore the worker and AI settings used for this job.");
+    if (worker.url !== job.worker_url) throw new Error("Restore the worker settings used for this job.");
+    const { withAi } = await import("./studio-ai-default.server");
     const token = worker.token;
     const state = workerStatusSchema.parse(await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}`));
     if (state.status === "failed") {
@@ -41,8 +40,9 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const { data: source } = await context.supabase.from("studio_sources").select("title").eq("id", job.source_id).eq("user_id", context.userId).single();
         if (!targets.length) {
         const { analyzeWithKey } = await import("./studio-ai.server");
-        const segments = await analyzeWithKey(z.enum(providers).parse(ai.provider), ai.model, await decrypt(ai.encrypted_key, secret), state.cues, ai.base_url,
-          { title: source?.title || "YouTube video", duration: state.duration, outline: "" });
+        const cues = state.cues;
+        const segments = await withAi(ai, secret, c => analyzeWithKey(c.provider, c.model, c.key, cues, c.baseUrl,
+          { title: source?.title || "YouTube video", duration: state.duration!, outline: "" }));
         targets = segments.map(segment => { const id = crypto.randomUUID(); return { id, segment, path: `${context.userId}/clips/${id}/${job.id}.mp4` }; });
         const persisted = await supabaseAdmin.from("studio_cloud_jobs").update({ clips: targets.map(t => ({ ...t })) }).eq("id", job.id);
         if (persisted.error) throw new Error("Couldn't persist render targets.");
@@ -76,7 +76,6 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const cues = z.array(cueSchema).parse(source?.transcript || []);
         const { reviewWithKey } = await import("./studio-ai.server");
         const { viralReviewSchema } = await import("./clip-review-rules");
-        const key = await decrypt(ai.encrypted_key, secret);
         const current = await context.supabase.from("studio_clips").select("id,video_path,viral_review").eq("source_id", job.source_id).eq("user_id", context.userId);
         if (current.error) throw new Error("Couldn't load staged clips.");
         const remaining = targets.filter(t => !current.data.some(c => c.id === t.id && c.video_path === t.path && viralReviewSchema.safeParse(c.viral_review).success));
@@ -91,8 +90,8 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           // Attaching the video first invalidates any stale review through the existing DB trigger.
           const attached = await context.supabase.from("studio_clips").update({ video_path: t.path, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).select("caption,voiceover,start_seconds,end_seconds").single();
           if (attached.error || !attached.data) throw new Error("Couldn't attach saved clip.");
-          const review = viralReviewSchema.parse(await reviewWithKey(z.enum(providers).parse(ai.provider), ai.model, key, ai.base_url,
-            t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, "", t.segment.end - t.segment.start));
+          const review = viralReviewSchema.parse(await withAi(ai, secret, c => reviewWithKey(c.provider, c.model, c.key, c.baseUrl,
+            t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, "", t.segment.end - t.segment.start)));
           let saveReview = context.supabase.from("studio_clips").update({ viral_review: review, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).eq("caption", attached.data.caption).eq("video_path", t.path).eq("start_seconds", attached.data.start_seconds).eq("end_seconds", attached.data.end_seconds);
           saveReview = attached.data.voiceover === null ? saveReview.is("voiceover", null) : saveReview.eq("voiceover", attached.data.voiceover);
           const saved = await saveReview.select("id").maybeSingle();

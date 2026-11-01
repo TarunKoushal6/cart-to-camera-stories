@@ -1,6 +1,6 @@
 - [x] Compare pinned OpenShorts source, add optional Python bridge/full-image deployment, health-check compatibility, recover leased interrupted jobs, and preserve approval with retryable next-day batches; 19 app tests and 2 worker tests pass, signed-in setup/download checks pass, preview build OK.
 - [x] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files; signed-in settings/downloads and missing-connection checks passed, plus a 25s vertical-caption render and 9 tests.
-- [ ] Verify live cloud YouTube download → personal-AI selection → worker render/upload → approval/scheduling — requires a deployed compatible worker, saved personal AI key and connected publishing accounts.
+- [ ] Verify worker render/upload → approval/scheduling — blocked: worker must run the fixed app.py (Windows caption-path fix); download and AI selection verified.
 - [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.
@@ -17,7 +17,7 @@
 - [x] Add local vertical cropping and burned-in karaoke captions.
 - [x] Add Instagram/Facebook clip publishing and real social analytics.
 - [x] Verify authenticated intake, transcript import, manual selection, 720×1280 / 25s export, burned captions, storage read-back and mobile rendering; 17 tests pass.
-- [ ] Verify live AI analysis with a real personal provider key — blocked on a user-supplied key.
+- [x] Shared default AI endpoint (gemini-2.5-flash) for accounts without a working key; verified AI picked 10 clips on the 2h55m test video.
 - [ ] Verify live Meta publishing and metrics — blocked on connected Instagram/Facebook accounts.
 - [x] Add AI language selection, custom scripts and actions-only review creation.
 - [x] Add external video uploads and editable posting details.
