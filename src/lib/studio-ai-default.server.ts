@@ -23,7 +23,7 @@ export function sharedAiCredentials(env: Record<string, string | undefined> = pr
     .map(key => ({ provider: DEFAULT_AI.provider, model: DEFAULT_AI.model, key, baseUrl: DEFAULT_AI.baseUrl, shared: true }));
 }
 
-/** Runs an AI call with the owner's saved key, then the shared default key, then its backup. */
+/** Runs an AI call with the owner's saved key, then the hermes shared key, then the other shared key. */
 export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredential) => Promise<T>): Promise<T> {
   const shared = sharedAiCredentials();
   if (saved?.model) {
