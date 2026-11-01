@@ -134,7 +134,7 @@ export function AutoCutCard() {
       </Button>
     </div>
     <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><Music className="h-4 w-4 text-primary" />Background music
-      <select aria-label="Background music" className="studio-select h-9 w-auto" value={music} onChange={(e) => setMusic(e.target.value as MusicMode)}>
+      <select aria-label="Background music" className="studio-select" style={{ width: "auto", height: 36 }} value={music} onChange={(e) => setMusic(e.target.value as MusicMode)}>
         {MUSIC_MODES.map((m) => <option key={m} value={m}>{MUSIC_LABELS[m]}</option>)}
       </select>
       <span className="text-xs">Royalty-free, kept quiet and lowered automatically whenever someone speaks. No voiceover.</span>
