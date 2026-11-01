@@ -323,7 +323,8 @@ def parse_subtitles(text):
     return out
 
 def pick_subtitle(files):
-    """Prefer manual subs (no '-orig'/auto marker needed), original-language auto-captions, then SUB_LANGS order."""
+    """Prefer original-language captions (*-orig, never auto-translated), then YOUTUBE_SUB_LANGS order.
+    yt-dlp writes uploaded subs for a language when present, otherwise its auto-captions."""
     order = [l.strip() for l in SUB_LANGS.split(',') if l.strip()]
     def lang(f): return f.name[len('subs.'):].rsplit('.', 1)[0]
     def rank(f):
@@ -387,15 +388,13 @@ def download(job, url):
         if sub_cues:
             write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size, 'subtitles': True})
             cues = [c for c in sub_cues if c['start'] < duration]
-        else:
-            run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
-        if sub_cues:
-            pass
         elif ENGINE == 'openshorts':
+            run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
             write(job, stage='transcribing', progress={})
             from openshorts_adapter import transcribe_source
             cues = transcribe_source(source)
         else:
+            run(['ffmpeg', '-y', '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], failure='FFmpeg could not extract audio')
             global MODEL
             with MODEL_LOCK:
                 if MODEL is None:
