@@ -37,12 +37,12 @@ export const startCloudCut = createServerFn({ method: "POST" }).middleware([requ
     const youtube = youtubeId(data.url);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: settings } = await supabaseAdmin.from("studio_credentials").select("*").eq("user_id", context.userId);
-    if (!settings?.some(s => s.kind === "ai")) throw new Error("Save your AI endpoint, key and model in Settings first.");
+    if (!settings?.some(s => s.kind === "ai") && !process.env["DEFAULT_AI_KEY"] && !process.env["DEFAULT_AI_KEY_BACKUP"]) throw new Error("Save your AI endpoint, key and model in Settings first.");
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) throw new Error("Secure credential storage is not configured.");
     let sourceId = data.sourceId;
     const { checkWorker, resolveWorker, callWorker } = await import("./cloud-clipper.server");
-    const worker = await resolveWorker(settings.find(s => s.kind === "cloud_worker"), secret);
+    const worker = await resolveWorker(settings?.find(s => s.kind === "cloud_worker"), secret);
     await checkWorker(worker.url, worker.token);
     if (sourceId) {
       const { data: source } = await context.supabase.from("studio_sources").select("youtube_id").eq("id", sourceId).single();
