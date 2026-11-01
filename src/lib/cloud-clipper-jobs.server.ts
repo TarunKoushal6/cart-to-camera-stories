@@ -24,11 +24,14 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
     const { withAi } = await import("./studio-ai-default.server");
     const token = worker.token;
     const state = workerStatusSchema.parse(await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}`));
-    if (state.status === "failed") {
-      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: state.error || "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory." }).eq("id", job.id);
+    let targets = z.array(cloudTargetSchema.omit({ upload_url: true })).parse(job.clips);
+    const finished = new Set(state.completed ?? []);
+    const workerError = state.error || "Worker failed. Check worker logs; YouTube may block downloads or the host may lack memory.";
+    // A worker that stopped part-way still keeps the clips it finished: those are attached below.
+    if (state.status === "failed" && !targets.some(t => finished.has(t.id))) {
+      await supabaseAdmin.from("studio_cloud_jobs").update({ status: "failed", error: workerError }).eq("id", job.id);
       return { status: "failed" };
     }
-    let targets = z.array(cloudTargetSchema.omit({ upload_url: true })).parse(job.clips);
     if (state.status === "analyzed") {
       if (!state.cues?.length || !state.duration) throw new Error("Worker returned no timed transcript.");
       // Claim once; concurrent browser polls must not create duplicate clips.
@@ -67,7 +70,8 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         throw e;
       }
     }
-    if (state.status === "complete" && targets.length) {
+    const workerDone = state.status === "complete" || state.status === "failed";
+    if (targets.length && (workerDone || (state.status === "rendering" && targets.some(t => finished.has(t.id))))) {
       const claim = await supabaseAdmin.from("studio_cloud_jobs").update({ status: "finalizing" }).eq("id", job.id).in("status", ["rendering", "analyzing", "finalizing"]).select("id").maybeSingle();
       if (!claim.data) return { status: job.status };
       try {
@@ -79,9 +83,9 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const current = await context.supabase.from("studio_clips").select("id,video_path,viral_review").eq("source_id", job.source_id).eq("user_id", context.userId);
         if (current.error) throw new Error("Couldn't load staged clips.");
         const remaining = targets.filter(t => !current.data.some(c => c.id === t.id && c.video_path === t.path && viralReviewSchema.safeParse(c.viral_review).success));
-        // One AI review per tick keeps cloud requests bounded even for a 15-clip batch.
-        for (const t of remaining.slice(0, 1)) {
-          if (!state.completed?.includes(t.id)) throw new Error("Worker did not finish every clip.");
+        // Attach clips as soon as the worker finishes each one; one AI review per tick keeps requests bounded.
+        const renderedNow = remaining.filter(t => finished.has(t.id));
+        for (const t of renderedNow.slice(0, 1)) {
           const folder = t.path.slice(0, t.path.lastIndexOf("/"));
           const name = t.path.slice(t.path.lastIndexOf("/") + 1);
           const files = await supabaseAdmin.storage.from("videos").list(folder, { search: name });
@@ -97,8 +101,11 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           const saved = await saveReview.select("id").maybeSingle();
           if (saved.error || !saved.data) throw new Error("Clip changed during AI review. Run a fresh review.");
         }
-        const nextStatus = remaining.length <= 1 ? "ready" : "rendering";
-        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error: null }).eq("id", job.id);
+        const moreToReview = renderedNow.length > 1, saved = targets.length - remaining.length + Math.min(1, renderedNow.length);
+        const nextStatus = moreToReview || !workerDone ? "rendering" : state.status === "failed" ? "failed" : "ready";
+        const error = nextStatus === "failed" ? `${saved} of ${targets.length} clips saved before the worker stopped. ${workerError}`
+          : nextStatus === "ready" && saved < targets.length ? `${saved} of ${targets.length} clips saved; the worker skipped the rest.` : null;
+        await supabaseAdmin.from("studio_cloud_jobs").update({ status: nextStatus, error }).eq("id", job.id);
         return { status: nextStatus };
       } catch (e) {
         const reason = e instanceof Error ? e.message.slice(0, 400) : "Unknown error";
