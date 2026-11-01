@@ -17,12 +17,13 @@ export function savedKeyUnusable(e: unknown) {
   return e instanceof AiRequestError && [401, 402, 403, 429].includes(e.status);
 }
 
+/** The hermes key (stored as DEFAULT_AI_KEY_BACKUP) is the primary active shared key; DEFAULT_AI_KEY is the fallback. */
 export function sharedAiCredentials(env: Record<string, string | undefined> = process.env): AiCredential[] {
-  return [env["DEFAULT_AI_KEY"], env["DEFAULT_AI_KEY_BACKUP"]].filter((k): k is string => !!k)
+  return [...new Set([env["DEFAULT_AI_KEY_BACKUP"], env["DEFAULT_AI_KEY"]].filter((k): k is string => !!k))]
     .map(key => ({ provider: DEFAULT_AI.provider, model: DEFAULT_AI.model, key, baseUrl: DEFAULT_AI.baseUrl, shared: true }));
 }
 
-/** Runs an AI call with the owner's saved key, then the shared default key, then its backup. */
+/** Runs an AI call with the owner's saved key, then the hermes shared key, then the other shared key. */
 export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredential) => Promise<T>): Promise<T> {
   const shared = sharedAiCredentials();
   if (saved?.model) {
