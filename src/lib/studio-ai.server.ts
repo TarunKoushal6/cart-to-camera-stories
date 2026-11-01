@@ -47,6 +47,7 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(240000) });
   // Do not include provider bodies: some services can echo credentials in errors.
+  if (r.status === 401 || r.status === 403) throw new Error(`${provider} refused your AI key (${r.status}): it is invalid, revoked or lacks access. Save a new key in Settings.`);
   if (!r.ok) throw new Error(`${provider} rejected the analysis (${r.status}). Check your key, model, quota and billing in Settings.`);
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
