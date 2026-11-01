@@ -20,7 +20,7 @@ export const cloudTargetSchema = z.object({
 const maybeNum = z.number().nonnegative().nullable().optional();
 export const workerProgressSchema = z.object({
   stage: z.enum(["queued", "fetching_subtitles", "downloading", "preparing_audio", "loading_model", "transcribing", "analyzed"]).optional().catch(undefined),
-  progress: z.object({ downloaded: maybeNum, total: maybeNum, speed: maybeNum, eta: maybeNum, part: maybeNum, percent: maybeNum }).partial().optional().catch(undefined),
+  progress: z.object({ downloaded: maybeNum, total: maybeNum, speed: maybeNum, eta: maybeNum, part: maybeNum, percent: maybeNum, subtitles: z.boolean().optional() }).partial().optional().catch(undefined),
 });
 export type WorkerProgress = z.infer<typeof workerProgressSchema>;
 export const workerStatusSchema = z.object({
@@ -63,7 +63,7 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
     if (g.part && g.part > 1) parts.push("audio track");
     return { label: `Downloading video · ${parts.join(" · ")}`, percent: g.total ? Math.min(100, (g.downloaded / g.total) * 100) : null };
   }
-  if (p.stage === "preparing_audio" && g.downloaded === -1) return { label: "Using YouTube captions · no transcription needed", percent: 100 };
+  if (p.stage === "preparing_audio" && g.subtitles) return { label: "Using YouTube captions · no transcription needed", percent: 100 };
   if (p.stage === "preparing_audio") return { label: `Downloaded ${g.total ? formatBytes(g.total) : ""} · extracting audio`.replace("  ", " "), percent: 100 };
   if (p.stage === "loading_model") return { label: "Loading speech model (first run downloads it)", percent: null };
   if (p.stage === "transcribing") return { label: `Transcribing speech${g.percent != null ? ` · ${Math.round(g.percent)}%` : ""}`, percent: g.percent ?? null };
