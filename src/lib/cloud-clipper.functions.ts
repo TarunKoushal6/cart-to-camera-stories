@@ -84,13 +84,13 @@ export const pollCloudCut = createServerFn({ method: "POST" }).middleware([requi
     return advanceCloudCut(data, context);
   });
 
-/** Read-only download/transcription progress; never advances or claims the job. */
+/** Read-only download/transcription/render progress; never advances or claims the job. */
 export const cloudCutProgress = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ jobId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: job } = await context.supabase.from("studio_cloud_jobs").select("status,worker_url,worker_job_id")
+    const { data: job } = await context.supabase.from("studio_cloud_jobs").select("status,worker_url,worker_job_id,clips")
       .eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
-    if (!job || job.status !== "transcribing") return null;
+    if (!job || !["transcribing", "rendering"].includes(job.status)) return null;
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
     if (!secret) return null;
     try {
@@ -99,7 +99,13 @@ export const cloudCutProgress = createServerFn({ method: "POST" }).middleware([r
       const { callWorker, resolveWorker } = await import("./cloud-clipper.server");
       const worker = await resolveWorker(settings?.[0], secret);
       if (worker.url !== job.worker_url) return null;
-      const parsed = workerProgressSchema.safeParse(await callWorker(job.worker_url, worker.token, `/jobs/${job.worker_job_id}`));
+      const raw = await callWorker(job.worker_url, worker.token, `/jobs/${job.worker_job_id}`) as { completed?: unknown };
+      if (job.status === "rendering") {
+        const total = Array.isArray(job.clips) ? job.clips.length : 0;
+        const rendered = Array.isArray(raw?.completed) ? raw.completed.length : 0;
+        return { rendered, total };
+      }
+      const parsed = workerProgressSchema.safeParse(raw);
       return parsed.success && parsed.data.stage ? parsed.data : null;
     } catch { return null; }
   });
