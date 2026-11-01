@@ -19,7 +19,7 @@ ROOT = Path(os.getenv('DATA_DIR') or Path(__file__).resolve().parent / 'data'); 
 TOKEN = os.getenv('WORKER_TOKEN', '')
 AUTH = HTTPBearer(auto_error=False)
 POOL = ThreadPoolExecutor(max_workers=1)
-LOCK = threading.Lock()
+LOCK = threading.RLock()  # re-entrant: read() is also called while holding it
 MODEL_LOCK = threading.Lock()
 MODEL = None
 ENGINE = os.getenv('CLIPPER_ENGINE', 'cutline')
@@ -54,17 +54,37 @@ class Render(BaseModel):
 def folder(job):
     return ROOT / str(job)
 
+def replace_file(tmp, p):
+    # Windows refuses to replace a file another reader (status poll, antivirus, indexer) has open
+    # ("[WinError 5] Access is denied"), so retry briefly before giving up.
+    for attempt in range(40):
+        try: return tmp.replace(p)
+        except PermissionError:
+            if attempt == 39: raise
+            time.sleep(0.05 * (attempt + 1) if attempt < 10 else 0.5)
+
+def read_state(p):
+    for attempt in range(20):
+        try: return json.loads(p.read_text())
+        except (PermissionError, json.JSONDecodeError):
+            if attempt == 19: raise
+            time.sleep(0.1)
+
 def read(job):
-    p = folder(job) / 'state.json'
-    if not p.exists(): raise HTTPException(404, 'Job not found; sleeping/restarted free hosts can lose jobs')
-    return json.loads(p.read_text())
+    with LOCK:
+        p = folder(job) / 'state.json'
+        if not p.exists(): raise HTTPException(404, 'Job not found; sleeping/restarted free hosts can lose jobs')
+        return read_state(p)
+
+def save_state(p, data):
+    tmp = p.with_suffix('.tmp'); tmp.write_text(json.dumps(data, ensure_ascii=False)); replace_file(tmp, p)
 
 def write(job, **fields):
     with LOCK:
         p = folder(job) / 'state.json'
-        data = json.loads(p.read_text()) if p.exists() else {}
+        data = read_state(p) if p.exists() else {}
         data.update(fields)
-        tmp = p.with_suffix('.tmp'); tmp.write_text(json.dumps(data, ensure_ascii=False)); tmp.replace(p)
+        save_state(p, data)
 
 class StepError(RuntimeError):
     """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
@@ -513,10 +533,10 @@ def start(body: Intake):
     d = folder(body.id)
     with LOCK:
         if (d / 'state.json').exists(): return {'id': str(body.id)}
-        active = sum(1 for p in ROOT.glob('*/state.json') if json.loads(p.read_text()).get('status') in ['transcribing','analyzed','rendering'])
+        active = sum(1 for p in ROOT.glob('*/state.json') if read_state(p).get('status') in ['transcribing','analyzed','rendering'])
         if active >= 3: raise HTTPException(429, 'Worker queue full')
         d.mkdir(exist_ok=True)
-        (d / 'state.json').write_text(json.dumps({'status':'transcribing','stage':'queued','progress':{},'completed':[]}))
+        save_state(d / 'state.json', {'status':'transcribing','stage':'queued','progress':{},'completed':[]})
     POOL.submit(download, body.id, str(body.url))
     return {'id': str(body.id)}
 
@@ -531,6 +551,6 @@ def begin_render(job: uuid.UUID, body: Render):
         s = read(job)
         if s['status'] in ['rendering','complete']: return {'accepted': True}
         if s['status'] != 'analyzed': raise HTTPException(409, 'Transcript not ready')
-        p = folder(job) / 'state.json'; s['status'] = 'rendering'; p.write_text(json.dumps(s))
+        save_state(folder(job) / 'state.json', {**s, 'status': 'rendering'})
     POOL.submit(render, job, body.targets)
     return {'accepted': True}
