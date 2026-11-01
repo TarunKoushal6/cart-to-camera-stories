@@ -1,6 +1,10 @@
+- [x] Fix build errors from the AI clip-list parsing change and the new test file.
+- [x] Fix build error in auto cut progress panel; simplified dashboard verified in a signed-in screenshot.
 - [x] Compare pinned OpenShorts source, add optional Python bridge/full-image deployment, health-check compatibility, recover leased interrupted jobs, and preserve approval with retryable next-day batches; 19 app tests and 2 worker tests pass, signed-in setup/download checks pass, preview build OK.
 - [x] Add encrypted cloud worker connection, one-click YouTube jobs, verified cloud MP4 staging with manual approval, and downloadable FastAPI/Docker deployment files; signed-in settings/downloads and missing-connection checks passed, plus a 25s vertical-caption render and 9 tests.
-- [ ] Verify worker render/upload → approval/scheduling — blocked: worker must run the fixed app.py (Windows caption-path fix); download and AI selection verified.
+- [x] Simplify dashboard to one "Auto Cut Viral Shorts" card, 5-stage progress with size/speed (MB/s + Mbps)/ETA, and a ready clips grid; Voiceover tab removed from the menu.
+- [x] Real test run: 591 MB download at ~69 MB/s, captions, AI picked 8 clips, worker rendered real 720×1280 30s clips with burned karaoke captions; first clip saved to the library.
+- [ ] Finish the test batch (remaining 6 clips + AI ratings) — blocked: worker must run the new app.py (Windows file-lock fix) and the shared AI keys need credit (main key out of balance, backup returns 502).
 - [x] Browser batch clipping saves captioned MP4s and supports manual approval with next-day scheduling.
 - [x] Add custom AI endpoint (base URL + key) with live model scanning dropdown.
 - [x] Add Voiceover studio page: YouTube intake, AI/manual clips, captions + voiceover, approval-gated posting.

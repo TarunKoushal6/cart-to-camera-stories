@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+const worker = vi.hoisted(() => ({ reply: { status: "complete", completed: [] as string[], error: undefined as string | undefined } }));
 const state = vi.hoisted(() => ({ status: "finalizing", reviewed: false, leased: true, updates: [] as Record<string, unknown>[] }));
 const id = "00000000-0000-4000-8000-000000000001";
 const path = `owner/clips/${id}/job.mp4`;
@@ -25,9 +26,9 @@ function query(table: string) {
 const db = {from:query,rpc:async()=>({data:state.leased,error:null}),storage:{from:()=>({list:async()=>({data:[{name:"job.mp4",metadata:{mimetype:"video/mp4",size:1000}}],error:null})})}};
 vi.mock("@/integrations/supabase/client.server",()=>({supabaseAdmin:db}));
 vi.mock("@/lib/studio-crypto.server",()=>({decrypt:async()=>"key"}));
-vi.mock("@/lib/cloud-clipper.server",()=>({callWorker:async()=>({status:"complete",completed:[id]}),resolveWorker:async()=>({url:"https://worker.example.com",token:""})}));
+vi.mock("@/lib/cloud-clipper.server",()=>({callWorker:async()=>worker.reply,resolveWorker:async()=>({url:"https://worker.example.com",token:""})}));
 vi.mock("@/lib/studio-ai.server",()=>({reviewWithKey:async()=>critique}));
-beforeEach(()=>{ state.status="finalizing"; state.reviewed=false; state.leased=true; state.updates=[]; vi.stubEnv("STUDIO_ENCRYPTION_KEY","test"); });
+beforeEach(()=>{ state.status="finalizing"; state.reviewed=false; state.leased=true; state.updates=[]; worker.reply={status:"complete",completed:[id],error:undefined}; vi.stubEnv("STUDIO_ENCRYPTION_KEY","test"); });
 it("resumes interrupted finalization, attaches the exact MP4 and reviews without approving or posting",async()=>{
   const {advanceCloudCut}=await import("@/lib/cloud-clipper-jobs.server");
   const result=await advanceCloudCut({jobId:id}, {supabase:db as never,userId:"owner"});
@@ -42,4 +43,16 @@ it("does not process a job already held by another poll",async()=>{
   const {advanceCloudCut}=await import("@/lib/cloud-clipper-jobs.server");
   expect(await advanceCloudCut({jobId:id},{supabase:db as never,userId:"owner"})).toEqual({status:"finalizing"});
   expect(state.updates).toEqual([]);
+});it("keeps clips the worker finished before it crashed, then marks the job failed with the count",async()=>{
+  worker.reply={status:"failed",completed:[id],error:"Access is denied"};
+  const {advanceCloudCut}=await import("@/lib/cloud-clipper-jobs.server");
+  expect((await advanceCloudCut({jobId:id},{supabase:db as never,userId:"owner"})).status).toBe("failed");
+  expect(state.updates).toContainEqual({video_path:path,approved_at:null});
+  expect(state.updates.some(u=>u['status']==="failed"&&String(u['error']).startsWith("1 of 1 clips saved"))).toBe(true);
+});
+it("fails without attaching anything when the worker finished no clips",async()=>{
+  worker.reply={status:"failed",completed:[],error:"Download failed"};
+  const {advanceCloudCut}=await import("@/lib/cloud-clipper-jobs.server");
+  expect((await advanceCloudCut({jobId:id},{supabase:db as never,userId:"owner"})).status).toBe("failed");
+  expect(state.updates.some(u=>u['video_path'])).toBe(false);
 });

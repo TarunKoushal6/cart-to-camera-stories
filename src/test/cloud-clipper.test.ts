@@ -39,8 +39,8 @@ describe("worker download progress", () => {
     const { progressSummary } = await import("@/lib/cloud-clipper-rules");
     const s = progressSummary({ stage: "downloading", progress: { downloaded: 512 * 1024 ** 2, total: 1024 ** 3, speed: 5 * 1024 ** 2, eta: 120 } });
     expect(s?.percent).toBe(50);
-    expect(s?.label).toContain("512 MB of 1.0 GB");
-    expect(s?.label).toContain("5.0 MB/s");
+    expect(s?.label).toContain("512 MB / 1.0 GB (50%)");
+    expect(s?.label).toContain("5.0 MB/s (42 Mbps)");
     expect(s?.label).toContain("2 min left");
   });
   it("ignores unknown worker stages instead of failing the job", async () => {
@@ -48,24 +48,34 @@ describe("worker download progress", () => {
     expect(workerStatusSchema.parse({ status: "transcribing", stage: "mystery" }).stage).toBeUndefined();
   });
 });
+describe("download stats", () => {
+  it("shows size with percent, speed in MB/s and Mbps, and ETA", async () => {
+    const { downloadStats } = await import("@/lib/cloud-clipper-rules");
+    const d = downloadStats({ stage: "downloading", progress: { downloaded: 1.2 * 1024 ** 3, total: 2.4 * 1024 ** 3, speed: 2e6, eta: 45 } });
+    expect(d?.size).toBe("1.2 GB / 2.4 GB (50%)");
+    expect(d?.speed).toBe("1.9 MB/s (16 Mbps)");
+    expect(d?.eta).toBe("45s left");
+  });
+});
 describe("cloud job steps", () => {
   it("shows the download step with percent from worker progress", async () => {
     const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
     const v = cloudJobProgress("transcribing", { stage: "downloading", progress: { downloaded: 256, total: 1024 } });
-    expect(v.step).toBe(1);
-    expect(v.label).toBe("Downloading video");
+    expect(v.step).toBe(0);
+    expect(v.label).toBe("Download video");
     expect(v.percent).toBe(25);
   });
   it("maps AI selection and rendering to their own steps", async () => {
     const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
-    expect(cloudJobProgress("analyzing", null).label).toBe("AI selecting viral hooks");
+    expect(cloudJobProgress("analyzing", null).label).toBe("AI hook selection");
     const r = cloudJobProgress("rendering", { rendered: 3, total: 12 });
-    expect(r.step).toBe(4);
+    expect(r.step).toBe(3);
     expect(r.percent).toBe(25);
+    expect(cloudJobProgress("ready", null).step).toBe(5);
   });
   it("treats subtitle fetching as the speech/captions step", async () => {
     const { cloudJobProgress } = await import("@/lib/cloud-clipper-rules");
-    expect(cloudJobProgress("transcribing", { stage: "fetching_subtitles" }).label).toBe("Extracting speech/captions");
+    expect(cloudJobProgress("transcribing", { stage: "fetching_subtitles" }).label).toBe("Captions");
   });
 });
 describe("long transcripts", () => {

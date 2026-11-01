@@ -44,10 +44,27 @@ export function formatBytes(bytes: number) {
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
-function formatEta(s: number) {
+export function formatEta(s: number) {
   if (s < 60) return `${Math.round(s)}s left`;
   const m = Math.round(s / 60);
   return m < 60 ? `${m} min left` : `${Math.floor(m / 60)}h ${m % 60}m left`;
+}
+/** Download speed in both MB/s and Mbps, e.g. "15.4 MB/s (129 Mbps)". */
+export function formatSpeed(bytesPerSecond: number) {
+  const mbps = (bytesPerSecond * 8) / 1e6;
+  return `${formatBytes(bytesPerSecond)}/s (${mbps >= 10 ? Math.round(mbps) : mbps.toFixed(1)} Mbps)`;
+}
+/** Separate size / speed / ETA strings for the download stage. */
+export function downloadStats(p: LiveCloudProgress): { size: string; speed: string | null; eta: string | null; percent: number | null } | null {
+  if (p?.stage !== "downloading" || !p.progress?.downloaded) return null;
+  const g = p.progress, downloaded = g.downloaded ?? 0;
+  const percent = g.total ? Math.min(100, (downloaded / g.total) * 100) : null;
+  return {
+    size: g.total ? `${formatBytes(downloaded)} / ${formatBytes(g.total)} (${Math.round(percent!)}%)` : `${formatBytes(downloaded)} downloaded`,
+    speed: g.speed ? formatSpeed(g.speed) : null,
+    eta: g.eta ? formatEta(g.eta) : null,
+    percent,
+  };
 }
 /** Human label + optional percent for the worker's download/transcription step. */
 export function progressSummary(p: WorkerProgress | null | undefined): { label: string; percent: number | null } | null {
@@ -56,12 +73,10 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
   if (p.stage === "queued") return { label: "Waiting for the worker to start", percent: null };
   if (p.stage === "fetching_subtitles") return { label: "Checking YouTube captions", percent: null };
   if (p.stage === "downloading") {
-    if (!g.downloaded) return { label: "Starting video download", percent: null };
-    const parts = [g.total ? `${formatBytes(g.downloaded)} of ${formatBytes(g.total)}` : `${formatBytes(g.downloaded)} downloaded`];
-    if (g.speed) parts.push(`${formatBytes(g.speed)}/s`);
-    if (g.eta) parts.push(formatEta(g.eta));
-    if (g.part && g.part > 1) parts.push("audio track");
-    return { label: `Downloading video · ${parts.join(" · ")}`, percent: g.total ? Math.min(100, (g.downloaded / g.total) * 100) : null };
+    const d = downloadStats(p);
+    if (!d) return { label: "Starting video download", percent: null };
+    const parts = [d.size, d.speed, d.eta, g.part && g.part > 1 ? "audio track" : null].filter(Boolean);
+    return { label: `Downloading video · ${parts.join(" · ")}`, percent: d.percent };
   }
   if (p.stage === "preparing_audio" && g.subtitles) return { label: "Using YouTube captions · no transcription needed", percent: 100 };
   if (p.stage === "preparing_audio") return { label: `Downloaded ${g.total ? formatBytes(g.total) : ""} · extracting audio`.replace("  ", " "), percent: 100 };
@@ -69,24 +84,23 @@ export function progressSummary(p: WorkerProgress | null | undefined): { label: 
   if (p.stage === "transcribing") return { label: `Transcribing speech${g.percent != null ? ` · ${Math.round(g.percent)}%` : ""}`, percent: g.percent ?? null };
   return null;
 }
-export const CLOUD_STEPS = ["Queued", "Downloading video", "Extracting speech/captions", "AI selecting viral hooks", "Rendering clips"] as const;
+export const CLOUD_STEPS = ["Download video", "Captions", "AI hook selection", "9:16 vertical cut & burn captions", "Ready"] as const;
 export type LiveCloudProgress = (WorkerProgress & { rendered?: number; total?: number }) | null | undefined;
 /** Current step (index into CLOUD_STEPS), detail line and percent for a cloud job. */
 export function cloudJobProgress(status: string, live: LiveCloudProgress): { step: number; label: string; detail: string | null; percent: number | null } {
   if (status === "ready") return { step: CLOUD_STEPS.length, label: "Ready for your approval", detail: null, percent: 100 };
   if (status === "failed") return { step: -1, label: "Cloud clipping failed", detail: null, percent: null };
-  if (status === "analyzing") return { step: 3, label: CLOUD_STEPS[3], detail: null, percent: null };
-  if (status === "finalizing") return { step: 4, label: "Reviewing saved clips", detail: null, percent: null };
+  if (status === "analyzing") return { step: 2, label: CLOUD_STEPS[2], detail: "Your AI is reading the transcript for viral moments", percent: null };
+  if (status === "finalizing") return { step: 3, label: "Reviewing saved clips", detail: "Rating each clip before it's ready", percent: null };
   if (status === "rendering") {
     const total = live?.total ?? 0, done = Math.min(live?.rendered ?? 0, total);
-    return { step: 4, label: CLOUD_STEPS[4], detail: total ? `${done} of ${total} clips saved` : null, percent: total ? (done / total) * 100 : null };
+    return { step: 3, label: CLOUD_STEPS[3], detail: total ? `${done} of ${total} clips saved` : null, percent: total ? (done / total) * 100 : null };
   }
   const stage = live?.stage, summary = progressSummary(live);
-  const detail = summary ? summary.label.replace(/^Downloading video · /, "").replace(/ · \d+%$/, "") : null;
-  if (!stage || stage === "queued") return { step: 0, label: CLOUD_STEPS[0], detail, percent: null };
-  if (stage === "downloading") return { step: 1, label: CLOUD_STEPS[1], detail, percent: summary?.percent ?? null };
-  if (stage === "analyzed") return { step: 3, label: CLOUD_STEPS[3], detail: null, percent: null };
-  return { step: 2, label: CLOUD_STEPS[2], detail, percent: stage === "transcribing" ? summary?.percent ?? null : null };
+  if (!stage || stage === "queued") return { step: 0, label: CLOUD_STEPS[0], detail: summary?.label ?? "Waiting for the worker to start", percent: null };
+  if (stage === "downloading") return { step: 0, label: CLOUD_STEPS[0], detail: summary?.label ?? null, percent: summary?.percent ?? null };
+  if (stage === "analyzed") return { step: 2, label: CLOUD_STEPS[2], detail: null, percent: null };
+  return { step: 1, label: CLOUD_STEPS[1], detail: summary?.label ?? null, percent: stage === "transcribing" ? summary?.percent ?? null : null };
 }
 /** Plain-language reason for a failed worker HTTP response. */
 export function workerHttpError(status: number) {

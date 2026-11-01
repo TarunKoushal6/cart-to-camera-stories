@@ -8,4 +8,17 @@ describe("Repurposing rules",()=>{
  it("preserves timed multilingual captions",()=>{expect(parseTranscript("1\n00:00:05,000 --> 00:00:08,500\nनमस्ते hello")).toEqual([{start:5,end:8.5,text:"नमस्ते hello"}]);});
  it("maps source timestamps into the selected clip",()=>{expect(clipCues([{start:4,end:7,text:"hello"},{start:30,end:31,text:"bye"}],5,25)).toEqual([{start:0,end:2,text:"hello"}]);});
  it("creates word-timed karaoke for burned subtitles",()=>{expect(makeAss([{start:0,end:2,text:"hello world"}],"karaoke")).toContain("{\\k100}HELLO {\\k100}WORLD");});
+});describe("AI segment parsing", () => {
+  it("keeps complete clips when the AI reply is cut off mid-list", async () => {
+    const { parseAiSegments } = await import("@/lib/studio-rules");
+    const text = '{"segments":[{"title":"A","start":10,"end":35,"score":88,"reason":"x"},{"title":"B","start":100,"end":125,"score":70,"reason":"y"},{"title":"C","start":200,"end":2';
+    expect(parseAiSegments(text, 1000).map((s) => s.title)).toEqual(["A", "B"]);
+  });
+  it("drops clips outside 20–30 seconds or past the video end instead of failing all", async () => {
+    const { parseAiSegments } = await import("@/lib/studio-rules");
+    const text = JSON.stringify({ segments: [{ title: "ok", start: 0, end: 25, score: 80.6, reason: "" }, { title: "long", start: 0, end: 60, score: 50, reason: "" }, { title: "late", start: 990, end: 1015, score: 50, reason: "" }] });
+    const r = parseAiSegments(text, 1000);
+    expect(r.map((s) => s.title)).toEqual(["ok"]);
+    expect(r[0]?.score).toBe(81);
+  });
 });

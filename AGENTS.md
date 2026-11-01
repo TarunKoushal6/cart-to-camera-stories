@@ -34,3 +34,4 @@
 - Batch scheduling keeps approved-but-unscheduled clips retryable and skips existing queued posts; next-day local slots compress for large batches so all clips remain on the promised day.
 - Accounts without a saved cloud worker use the shared DEFAULT_CLOUD_WORKER_URL (optional CLOUD_WORKER_TOKEN secret); worker fetches use redirect:"manual" and reject 3xx — Workers runtime doesn't support redirect:"error".
 - Cloud worker reports a stage/progress object on /jobs/{id}; the app reads it through a read-only progress function that never claims the job lease — keeps live progress cheap and separate from job advancement.
+- Cloud jobs attach each clip as soon as the worker lists it in `completed`, and a worker failure keeps already-finished clips before marking the job failed — long batches show results early and a late crash never discards finished work.
