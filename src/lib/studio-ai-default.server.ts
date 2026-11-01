@@ -2,7 +2,7 @@ import { z } from "zod";
 import { providers, type Provider } from "./studio-rules";
 
 /** Shared fallback endpoint for accounts without a working personal AI key. Keys live in server secrets. */
-export const DEFAULT_AI = { provider: "custom" as Provider, model: "gemini-2.5-flash", baseUrl: "https://api.iceyyy.dev/v1" };
+export const DEFAULT_AI = { provider: "custom" as Provider, model: "qwen3.8-flash", baseUrl: "https://api.iceyyy.dev/v1" };
 
 export type AiCredential = { provider: Provider; model: string; key: string; baseUrl: string | null; shared: boolean };
 type Saved = { provider: string; model: string | null; base_url: string | null; encrypted_key: string } | null | undefined;
