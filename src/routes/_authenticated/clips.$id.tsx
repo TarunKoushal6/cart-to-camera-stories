@@ -24,7 +24,7 @@ type PlatformId = "youtube" | "instagram" | "facebook";
 
 function PublishStudio() {
   const { id } = Route.useParams(), qc = useQueryClient();
-  const savePlan = useServerFn(saveClipPlan), approve = useServerFn(approveClip), review = useServerFn(reviewClip);
+  const savePlan = useServerFn(saveClipPlan), approve = useServerFn(approveClip);
   const publishMeta = useServerFn(publishStudioClip), publishYT = useServerFn(publishYouTubeClip);
   const getSettings = useServerFn(getStudioSettings), getYT = useServerFn(getYouTubeConnection);
   const ytConnect = useYouTubeConnect();
