@@ -548,9 +548,15 @@ def caption_lines(cues, start, end):
     words = []
     for c in cues:
         if c['end'] > start and c['start'] < end:
-            text = caption_word(c['text'])
-            if text:
-                words.append({'start': max(start, c['start']), 'end': min(end, c['end']), 'text': text})
+            # Sentence-level cues (untimed subtitles) are split evenly so groups stay 3-4 words.
+            parts = [t for t in (caption_word(x) for x in c['text'].split()) if t]
+            if not parts:
+                continue
+            step = (c['end'] - c['start']) / len(parts)
+            for k, text in enumerate(parts):
+                ws, we = c['start'] + k * step, c['start'] + (k + 1) * step
+                if we > start and ws < end:
+                    words.append({'start': max(start, ws), 'end': min(end, we), 'text': text})
     lines = []
     for gi, group in enumerate(caption_groups(words)):
         accent = CAPTION_ACCENTS[gi % len(CAPTION_ACCENTS)]
