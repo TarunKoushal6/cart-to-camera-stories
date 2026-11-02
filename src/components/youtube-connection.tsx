@@ -14,7 +14,7 @@ export function useYouTubeConnect(){
       const result=await start();
       await new Promise<void>((resolve,reject)=>{
         const cleanup=()=>{window.removeEventListener("message",message);clearInterval(timer);clearTimeout(timeout);};
-        const message=(e:MessageEvent)=>{if(e.origin!==window.location.origin||e.source!==popup||e.data?.type!=="cutline-youtube-connected")return;cleanup();e.data.success?resolve():reject(new Error("YouTube connection failed. Grant channel and upload access, then try again."));};
+        const message=(e:MessageEvent)=>{if(e.origin!==window.location.origin||e.source!==popup||e.data?.type!=="cutline-youtube-connected")return;cleanup();e.data.success?resolve():reject(new Error(typeof e.data.error==="string"&&e.data.error?`YouTube connection failed: ${e.data.error.slice(0,400)}`:"YouTube connection failed. Grant channel and upload access, then try again."));};
         window.addEventListener("message",message);
         const timer=window.setInterval(()=>{if(popup.closed){cleanup();reject(new Error("Connection window closed."));}},500);
         const timeout=window.setTimeout(()=>{cleanup();reject(new Error("Connection expired. Try again."));},600000);
