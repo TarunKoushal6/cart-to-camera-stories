@@ -19,7 +19,8 @@ export const cueSchema = z.object({ start: z.number().min(0), end: z.number().mi
 /** Background-music moods the AI may tag a clip with; the worker matches a royalty-free bed to it. */
 export const VIBES = ["energetic", "chill", "emotional", "dramatic", "inspiring", "funny"] as const;
 export type Vibe = typeof VIBES[number];
-export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000), vibe: z.enum(VIBES).optional() }).refine(s => s.end - s.start >= 20 && s.end - s.start <= 30, "Clips must be 20–30 seconds long.");
+export const CLIP_MIN_SECONDS = 20, CLIP_MAX_SECONDS = 60;
+export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000), vibe: z.enum(VIBES).optional() }).refine(s => s.end - s.start >= CLIP_MIN_SECONDS && s.end - s.start <= CLIP_MAX_SECONDS, `Clips must be ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} seconds long.`);
 /**
  * Reads AI segment JSON, tolerating code fences, a response cut off mid-way, and individual bad items.
  * Keeps every complete, valid segment that ends by `lastSecond`, up to 15.
@@ -44,7 +45,7 @@ export function parseAiSegments(text: string, lastSecond: number) {
     if (s.success && s.data.end <= lastSecond) out.push(s.data);
     if (out.length === 15) break;
   }
-  if (!out.length) throw new Error("The AI returned no usable 20–30 second clips. Try again.");
+  if (!out.length) throw new Error(`The AI returned no usable ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} second clips. Try again.`);
   return out;
 }
 export function youtubeId(value: string) {

@@ -6,7 +6,8 @@ import { ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Load
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { approveClip, getStudioSettings, publishStudioClip, reviewClip, saveClipPlan } from "@/lib/studio.functions";
-import { getYouTubeConnection, publishYouTubeClip, startYouTubeConnect } from "@/lib/youtube-publishing.functions";
+import { getYouTubeConnection, publishYouTubeClip } from "@/lib/youtube-publishing.functions";
+import { useYouTubeConnect } from "@/components/youtube-connection";
 import { viralReviewSchema } from "@/lib/clip-review-rules";
 import { composeCaption, parsePostText, youtubeFields, type PostText } from "@/lib/post-text-rules";
 import { stamp, studioHead } from "@/lib/studio-rules";
@@ -25,7 +26,8 @@ function PublishStudio() {
   const { id } = Route.useParams(), qc = useQueryClient();
   const savePlan = useServerFn(saveClipPlan), approve = useServerFn(approveClip), review = useServerFn(reviewClip);
   const publishMeta = useServerFn(publishStudioClip), publishYT = useServerFn(publishYouTubeClip);
-  const getSettings = useServerFn(getStudioSettings), getYT = useServerFn(getYouTubeConnection), connectYT = useServerFn(startYouTubeConnect);
+  const getSettings = useServerFn(getStudioSettings), getYT = useServerFn(getYouTubeConnection);
+  const ytConnect = useYouTubeConnect();
 
   const { data: clip, isLoading, error } = useQuery({ queryKey: ["studio-clip", id], queryFn: async () => {
     const r = await supabase.from("studio_clips").select("*").eq("id", id).single(); if (r.error) throw r.error; return r.data; } });
@@ -55,11 +57,6 @@ function PublishStudio() {
   const targets = platforms.filter(p => p.connected && selected[p.id]);
   const critique = viralReviewSchema.safeParse(clip.viral_review);
   const ready = Boolean(clip.video_path);
-
-  async function connectYouTube() {
-    try { const r = await connectYT(); window.location.href = r.url; }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't start YouTube connection. Check YouTube setup in Settings."); }
-  }
 
   async function post(mode: "now" | "schedule") {
     if (!clip || !targets.length) return;
@@ -120,7 +117,7 @@ function PublishStudio() {
               {p.connected
                 ? <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-xs font-medium"><CheckCircle2 className="h-3 w-3" />Connected</span>
                 : <span className="flex items-center gap-3"><span className="rounded-full bg-muted text-muted-foreground px-2.5 py-0.5 text-xs font-medium">Disconnected</span>
-                  {p.id === "youtube" ? <Button size="sm" variant="outline" onClick={connectYouTube}>Connect</Button>
+                  {p.id === "youtube" ? (yt?.configured === false ? <Button size="sm" variant="outline" asChild><Link to="/settings">Set up</Link></Button> : <Button size="sm" variant="outline" disabled={ytConnect.busy} onClick={ytConnect.connect}>{ytConnect.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect"}</Button>)
                     : <Button size="sm" variant="outline" asChild><Link to="/instagram">Connect</Link></Button>}</span>}
             </li>)}
           </ul>

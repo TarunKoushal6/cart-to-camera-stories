@@ -1,0 +1,2 @@
+ALTER TABLE public.studio_clips DROP CONSTRAINT IF EXISTS short_length;
+ALTER TABLE public.studio_clips ADD CONSTRAINT short_length CHECK (end_seconds - start_seconds BETWEEN 20 AND 60 AND start_seconds >= 0);
