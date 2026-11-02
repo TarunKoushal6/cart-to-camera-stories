@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { metaErrorMessage } from "./meta-error";
 
 const IG = "https://graph.instagram.com/v23.0";
 
@@ -7,9 +8,7 @@ async function ig(path: string, init?: RequestInit) {
   const t = await res.text();
   if (!res.ok) {
     console.error(`Instagram ${path.split("?")[0]} failed [${res.status}]: ${t}`);
-    let msg = t;
-    try { msg = JSON.parse(t).error?.message ?? t; } catch { /* keep */ }
-    throw new Error(`Instagram: ${msg}`);
+    throw new Error(metaErrorMessage(res.status, t, "Instagram"));
   }
   return JSON.parse(t);
 }

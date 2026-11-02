@@ -83,14 +83,14 @@ export const attachStudioVideo=createServerFn({method:"POST"}).middleware([requi
   if(updateError) throw new Error(updateError.message);
   return {saved:true};
 });
-export const connectFacebook=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({pageId:z.string().regex(/^\d+$/),token:z.string().min(20).max(3000)}).parse(d)).handler(async({data,context})=>{
+export const connectFacebook=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({pageId:z.string().trim().regex(/^(\d+|me)$/i),token:z.string().trim().min(20).max(3000)}).parse(d)).handler(async({data,context})=>{
   const secret=process.env["STUDIO_ENCRYPTION_KEY"];
   if(!secret) throw new Error("Secure key storage is not configured.");
   const {verifyFacebook}=await import("./studio-meta.server");
   const page=await verifyFacebook(data.pageId,data.token);
   const {encrypt}=await import("./studio-crypto.server");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
-  const {error}=await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"facebook",provider:"facebook",account_id:page.id,account_name:page.name,encrypted_key:await encrypt(data.token,secret),updated_at:new Date().toISOString()});
+  const {error}=await supabaseAdmin.from("studio_credentials").upsert({user_id:context.userId,kind:"facebook",provider:"facebook",account_id:page.id,account_name:page.name,encrypted_key:await encrypt(data.token.trim(),secret),updated_at:new Date().toISOString()});
   if(error) throw new Error("Couldn't save Facebook connection.");
   return {name:page.name};
 });

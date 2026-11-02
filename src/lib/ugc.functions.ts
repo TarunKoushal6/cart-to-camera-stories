@@ -134,7 +134,7 @@ export const pollVideo = createServerFn({ method: "POST" })
 
 export const connectInstagram = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ token: z.string().min(20).max(1000) }).parse(d))
+  .inputValidator((d) => z.object({ token: z.string().trim().min(20).max(1000) }).parse(d))
   .handler(async ({ data, context }) => {
     const { verifyToken } = await import("./instagram.server");
     const info = await verifyToken(data.token.trim());
