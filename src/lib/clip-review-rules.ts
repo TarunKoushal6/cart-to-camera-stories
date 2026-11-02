@@ -5,7 +5,8 @@ export const viralReviewSchema = z.object({
   evidence: z.enum(["transcript", "structure-only"]),
 });
 export type ViralReview = z.infer<typeof viralReviewSchema>;
-export function canApproveClip(clip: {video_path: string | null; viral_review: unknown}) { return Boolean(clip.video_path && viralReviewSchema.safeParse(clip.viral_review).success); }
+// The owner's Post/Schedule click is the approval; an AI review is optional.
+export function canApproveClip(clip: {video_path: string | null; viral_review?: unknown}) { return Boolean(clip.video_path); }
 export const edgeVoices = [
   {id:"hi-IN-SwaraNeural",label:"Hindi · Swara"}, {id:"hi-IN-MadhurNeural",label:"Hindi · Madhur"},
   {id:"en-IN-NeerjaNeural",label:"English (India) · Neerja"}, {id:"en-IN-PrabhatNeural",label:"English (India) · Prabhat"},

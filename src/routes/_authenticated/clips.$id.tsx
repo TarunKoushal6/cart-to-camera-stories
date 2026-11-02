@@ -65,9 +65,8 @@ function PublishStudio() {
     setBusy(mode);
     try {
       const caption = composeCaption(text);
-      // Clicking Post/Schedule is the owner's explicit approval; the AI review must exist before approval.
+      // Clicking Post/Schedule is the owner's explicit approval; no AI review is required.
       if (caption !== clip.caption) await savePlan({ data: { clipId: id, caption, voiceover: clip.voiceover || "" } });
-      if (!critique.success) { toast.message("Running AI viral review first…"); await review({ data: { clipId: id } }); }
       await approve({ data: { clipId: id } });
       const results = await Promise.allSettled(targets.map(p => p.id === "youtube"
         ? publishYT({ data: { clipId: id, ...youtubeFields(text), privacy: scheduledAt ? "public" : privacy, scheduledAt, madeForKids: false } })

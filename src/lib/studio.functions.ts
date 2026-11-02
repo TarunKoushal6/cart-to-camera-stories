@@ -97,7 +97,7 @@ export const connectFacebook=createServerFn({method:"POST"}).middleware([require
 export const publishStudioClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid(),platform:z.enum(["instagram","facebook"]),caption:z.string().max(2200),scheduledAt:z.string().datetime().nullable()}).parse(d)).handler(async({data,context})=>{
   const {data:c}=await context.supabase.from("studio_clips").select("video_path,approved_at,caption,viral_review").eq("id",data.clipId).single();
   if(!c?.video_path) throw new Error("Export and save the clip first.");
-  if(!c.approved_at||!canApproveClip(c)||c.caption!==data.caption)throw new Error("Save your changes, review with AI, and approve this clip before posting.");
+  if(!c.approved_at||!canApproveClip(c)||c.caption!==data.caption)throw new Error("Save your changes and approve this clip before posting.");
   if(data.scheduledAt && Date.parse(data.scheduledAt)<=Date.now()) throw new Error("Choose a future posting time.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:p,error}=await supabaseAdmin.from("studio_posts").insert({user_id:context.userId,clip_id:data.clipId,platform:data.platform,caption:data.caption,scheduled_at:data.scheduledAt || new Date().toISOString()}).select("*").single();
@@ -127,8 +127,7 @@ export const saveClipPlan=createServerFn({method:"POST"}).middleware([requireSup
 export const approveClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({clipId:z.string().uuid()}).parse(d)).handler(async({data,context})=>{
   const {data:c}=await context.supabase.from("studio_clips").select("video_path,viral_review").eq("id",data.clipId).single();
   if(!c?.video_path) throw new Error("Export and save the clip before approving.");
-  if(!canApproveClip(c))throw new Error("Run the AI viral review before approving this clip.");
-  const {error}=await context.supabase.from("studio_clips").update({approved_at:new Date().toISOString()}).eq("id",data.clipId);
+    const {error}=await context.supabase.from("studio_clips").update({approved_at:new Date().toISOString()}).eq("id",data.clipId);
   if(error) throw new Error("Couldn't approve the clip.");
   return {approved:true};
 });

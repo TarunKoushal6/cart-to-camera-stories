@@ -36,7 +36,7 @@ export const disconnectYouTube=createServerFn({method:"POST"}).middleware([requi
 export const publishYouTubeClip=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>youtubePublishSchema.parse(d)).handler(async({data,context})=>{
   if(data.scheduledAt&&Date.parse(data.scheduledAt)<=Date.now())throw new Error("Choose a future release time.");
   const {data:clip}=await context.supabase.from("studio_clips").select("video_path,approved_at,viral_review").eq("id",data.clipId).single();if(!clip?.video_path)throw new Error("Export and save the clip first.");
-  if(!clip.approved_at||!canApproveClip(clip))throw new Error("Review with AI and approve the clip before uploading to YouTube.");
+  if(!clip.approved_at||!canApproveClip(clip))throw new Error("Approve the clip before uploading to YouTube.");
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {accessToken,googleJson}=await import("./youtube-publishing.server");const token=await accessToken(supabaseAdmin,context.userId);
   const {data:post,error}=await context.supabase.from("youtube_posts").insert({user_id:context.userId,clip_id:data.clipId,title:data.title,description:data.description,tags:data.tags,privacy:data.privacy,scheduled_at:data.scheduledAt}).select("id").single();

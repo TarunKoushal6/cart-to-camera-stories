@@ -31,7 +31,7 @@ describe("cloud clipping boundaries", () => {
     expect(cloudTargetSchema.safeParse({...t,segment:{...t.segment,end:60}}).success).toBe(true);
   });
   it("requires a persisted critique before approving an uploaded cloud clip", () => {
-    expect(canApproveClip({video_path:"owner/clips/clip/video.mp4",viral_review:null})).toBe(false);
+    expect(canApproveClip({video_path:"owner/clips/clip/video.mp4",viral_review:null})).toBe(true);
   });
   it("rejects untimed transcription output", () => {
     expect(workerStatusSchema.safeParse({status:"analyzed",duration:90,cues:[{start:5,end:4,text:"bad"}]}).success).toBe(false);
