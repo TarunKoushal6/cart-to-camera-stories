@@ -12,10 +12,11 @@ const clean=(w:string)=>w.replace(/[{}\\]/g,"").normalize("NFC").trim();
 export function captionGroups(words:Word[]):Word[][]{
   const groups:Word[][]=[];let cur:Word[]=[];
   for(const w of words){
-    if(cur.length){
+    const prev=cur[cur.length-1];
+    if(prev){
       const chars=cur.reduce((n,x)=>n+x.text.length+1,0)+w.text.length;
-      const gap=w.start-cur[cur.length-1].end;
-      const endsSentence=/[.!?।,]$/.test(cur[cur.length-1].text);
+      const gap=w.start-prev.end;
+      const endsSentence=/[.!?।,]$/.test(prev.text);
       if(cur.length>=4||gap>0.6||(cur.length>=3&&(chars>22||endsSentence))){groups.push(cur);cur=[];}
     }
     cur.push(w);
