@@ -64,6 +64,13 @@
       "when": 1793522704975,
       "tag": "0008_cloud_job_background_music",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793581240473,
+      "tag": "0009_clip_length_up_to_60s",
+      "breakpoints": true
     }
   ]
 }
