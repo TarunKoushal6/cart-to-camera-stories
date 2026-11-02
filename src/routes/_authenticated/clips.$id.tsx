@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Loader2, Send, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { approveClip, getStudioSettings, publishStudioClip, reviewClip, saveClipPlan } from "@/lib/studio.functions";
+import { approveClip, getStudioSettings, publishStudioClip, saveClipPlan } from "@/lib/studio.functions";
 import { getYouTubeConnection, publishYouTubeClip } from "@/lib/youtube-publishing.functions";
 import { useYouTubeConnect } from "@/components/youtube-connection";
 import { viralReviewSchema } from "@/lib/clip-review-rules";
