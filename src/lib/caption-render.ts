@@ -3,19 +3,49 @@ import wasm from "@/assets/ffmpeg-core.wasm.asset.json";
 
 export type CaptionStyle = "karaoke" | "bold" | "clean";
 function assTime(n:number){ return `${Math.floor(n/3600)}:${String(Math.floor(n/60)%60).padStart(2,"0")}:${(n%60).toFixed(2).padStart(5,"0")}`; }
-export function makeAss(cues:Cue[],style:CaptionStyle) {
-  const header=`[Script Info]\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Barlow,${style==="clean"?42:58},&H0000F4D7,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,4,1,2,48,48,240,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
-  const rows:string[]=[];
-  for(const cue of cues){
-    const words=cue.text.replace(/[{}\\]/g,"").split(/\s+/).filter(Boolean);
-    for(let i=0;i<words.length;i+=5){
-      const chunk=words.slice(i,i+5);
-      const span=(cue.end-cue.start)/Math.max(words.length,1);
-      const start=cue.start+i*span,end=Math.min(cue.end,start+chunk.length*span);
-      const text=chunk.map(w=>style==="karaoke"?`{\\k${Math.max(1,Math.round(span*100))}}${w.toUpperCase()}`:style==="bold"?w.toUpperCase():w).join(" ");
-      rows.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Default,,0,0,0,,${text}`);
+const WHITE="&H00FFFFFF";
+/** Electric cyan, neon lime, warm amber gold (ASS colours are &HAABBGGRR). */
+export const CAPTION_ACCENTS=["&H00FFFF00","&H0000FF33","&H0000D7FF"] as const;
+type Word={start:number;end:number;text:string};
+/** NFC keeps Devanagari matras attached; toUpperCase() leaves Devanagari untouched. */
+const clean=(w:string)=>w.replace(/[{}\\]/g,"").normalize("NFC").trim();
+export function captionGroups(words:Word[]):Word[][]{
+  const groups:Word[][]=[];let cur:Word[]=[];
+  for(const w of words){
+    const prev=cur[cur.length-1];
+    if(prev){
+      const chars=cur.reduce((n,x)=>n+x.text.length+1,0)+w.text.length;
+      const gap=w.start-prev.end;
+      const endsSentence=/[.!?।,]$/.test(prev.text);
+      if(cur.length>=4||gap>0.6||(cur.length>=3&&(chars>22||endsSentence))){groups.push(cur);cur=[];}
     }
+    cur.push(w);
   }
+  if(cur.length)groups.push(cur);
+  return groups;
+}
+export function makeAss(cues:Cue[],style:CaptionStyle) {
+  const header=`[Script Info]\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\nWrapStyle: 0\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Barlow,${style==="clean"?42:48},${WHITE},${WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,2,50,50,380,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
+  const words:Word[]=[];
+  for(const cue of cues){
+    const parts=cue.text.split(/\s+/).map(clean).filter(Boolean);
+    const span=(cue.end-cue.start)/Math.max(parts.length,1);
+    parts.forEach((t,k)=>words.push({start:cue.start+k*span,end:cue.start+(k+1)*span,text:style==="clean"?t:t.toUpperCase()}));
+  }
+  const rows:string[]=[];
+  captionGroups(words).forEach((group,gi)=>{
+    const accent=CAPTION_ACCENTS[gi%CAPTION_ACCENTS.length];
+    const first=group[0],last=group[group.length-1];
+    if(!first||!last)return;
+    const groupEnd=last.end;
+    if(style!=="karaoke"){rows.push(`Dialogue: 0,${assTime(first.start)},${assTime(groupEnd)},Default,,0,0,0,,${group.map(w=>w.text).join(" ")}`);return;}
+    group.forEach((w,i)=>{
+      const end=group[i+1]?.start??groupEnd;
+      if(end-w.start<0.01)return;
+      const text=group.map((x,j)=>j===i?`{\\c${accent}\\fscx112\\fscy112}${x.text}{\\c${WHITE}\\fscx100\\fscy100}`:x.text).join(" ");
+      rows.push(`Dialogue: 0,${assTime(w.start)},${assTime(end)},Default,,0,0,0,,${text}`);
+    });
+  });
   return header+rows.join("\n");
 }
 export async function renderClip(file:File,start:number,end:number,cues:Cue[],style:CaptionStyle,framing:"center"|"left"|"right",onProgress:(n:number)=>void,voiceover?:File|null) {
