@@ -1,17 +1,24 @@
 import type { Database } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt } from "./studio-crypto.server";
+import { metaErrorMessage } from "./meta-error";
 type Post = Database["public"]["Tables"]["studio_posts"]["Row"];
 type GraphResult = { id?: string; name?: string; video_id?: string; status_code?: string; status?: { processing_phase?: { status?: string }; publishing_phase?: { status?: string } }; like_count?: number; comments_count?: number; likes?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } }; data?: { name: string; values?: { value: number }[] }[] };
 async function graph(base: string, path: string, token: string, params?: Record<string,string>) {
   const url = new URL(`${base}/${path}`);
   const headers = { Authorization: `Bearer ${token}` };
   const r = await fetch(url, params ? { method: "POST", headers, body: new URLSearchParams(params), signal: AbortSignal.timeout(20000) } : { headers, signal: AbortSignal.timeout(20000) });
-  if (!r.ok) throw new Error(`Meta request failed (${r.status}). Check account permissions, token expiry and media requirements.`);
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    console.error(`Meta ${path.split("?")[0]} failed [${r.status}]: ${body}`);
+    throw new Error(metaErrorMessage(r.status, body));
+  }
   return r.json() as Promise<GraphResult>;
 }
 export async function verifyFacebook(pageId: string, token: string) {
-  const page = await graph("https://graph.facebook.com/v23.0", `${pageId}?fields=id,name`, token);
+  const id = pageId.trim(), tk = token.trim();
+  const target = id.toLowerCase() === "me" ? "me" : encodeURIComponent(id);
+  const page = await graph("https://graph.facebook.com/v23.0", `${target}?fields=id,name`, tk);
   if (!page.id) throw new Error("Page not found");
   return { id: page.id, name: page.name || page.id };
 }
