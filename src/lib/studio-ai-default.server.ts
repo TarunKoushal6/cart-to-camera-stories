@@ -3,7 +3,7 @@ import { providers, type Provider } from "./studio-rules";
 
 /** Built-in default for accounts without a working personal AI key: Lovable AI's low-cost model
  * through the OpenAI-compatible chat-completions endpoint, authenticated with the server-only LOVABLE_API_KEY. */
-export const DEFAULT_AI = { provider: "custom" as Provider, model: "google/gemini-2.5-flash-lite", baseUrl: "https://ai.gateway.lovable.dev/v1" };
+export const DEFAULT_AI = { provider: "custom" as Provider, model: "google/gemini-3.1-flash-lite", baseUrl: "https://ai.gateway.lovable.dev/v1" };
 
 export type AiCredential = { provider: Provider; model: string; key: string; baseUrl: string | null; shared: boolean };
 type Saved = { provider: string; model: string | null; base_url: string | null; encrypted_key: string } | null | undefined;

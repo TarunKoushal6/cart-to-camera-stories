@@ -8,9 +8,9 @@ describe("built-in default AI (Lovable AI)", () => {
   beforeEach(() => { process.env["LOVABLE_API_KEY"] = "lovable"; });
   afterEach(() => { process.env = { ...env }; });
 
-  it("uses Lovable AI with gemini-2.5-flash-lite when no personal key is saved", async () => {
+  it("uses Lovable AI with gemini-3.1-flash-lite when no personal key is saved", async () => {
     const used = await withAi(null, SECRET, async c => c);
-    expect(used).toMatchObject({ key: "lovable", model: "google/gemini-2.5-flash-lite", baseUrl: "https://ai.gateway.lovable.dev/v1", shared: true });
+    expect(used).toMatchObject({ key: "lovable", model: "google/gemini-3.1-flash-lite", baseUrl: "https://ai.gateway.lovable.dev/v1", shared: true });
     expect(DEFAULT_AI.provider).toBe("custom");
   });
 
