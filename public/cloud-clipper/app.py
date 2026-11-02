@@ -2,7 +2,7 @@ import traceback
 """Cutline protocol v1: download/transcribe, then render scoped signed-upload targets.
 No database/service-role key or personal AI key is needed on this worker.
 """
-import os, json, uuid, secrets, shutil, subprocess, threading, re, time, logging
+import os, json, uuid, secrets, shutil, subprocess, threading, re, time, logging, unicodedata
 from collections import deque
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
