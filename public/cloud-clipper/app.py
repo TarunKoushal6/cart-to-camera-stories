@@ -582,7 +582,7 @@ WrapStyle: 0
 ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Main,{CAPTION_FONT},48,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,4,2,2,50,50,380,1
+Style: Main,{CAPTION_FONT},48,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,2,50,50,380,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
