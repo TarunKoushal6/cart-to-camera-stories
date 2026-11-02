@@ -618,7 +618,7 @@ def _render(job, targets, music=None):
         for t in targets:
             check_stop(job)
             s = t.segment
-            if not 20 <= s.end-s.start <= 30 or s.end > state['duration']: raise RuntimeError('Invalid clip window')
+            if not 20 <= s.end-s.start <= 60 or s.end > state['duration']: raise RuntimeError('Invalid clip window')
             ass = d / f'{t.id}.ass'; output = d / f'{t.id}.mp4'
             captions(ass, state['cues'], s.start, s.end)
             render_source = source

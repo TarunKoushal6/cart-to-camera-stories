@@ -24,10 +24,11 @@ describe("cloud clipping boundaries", () => {
     expect(workerUrl("https://creator-worker.hf.space/")).toBe("https://creator-worker.hf.space");
     for (const url of ["http://creator.hf.space", "https://127.0.0.1", "https://localhost", "https://user:token@creator.hf.space", "https://creator.hf.space?token=secret"]) expect(() => workerUrl(url)).toThrow();
   });
-  it("accepts only 20–30 second render targets", () => {
+  it("accepts only 20–60 second render targets", () => {
     const t = {id:"00000000-0000-4000-8000-000000000001",path:"owner/clips/clip/video.mp4",upload_url:"https://uploads.example.com/object",segment:{title:"Hook",start:0,end:20,score:80,reason:"Strong hook"}};
     expect(cloudTargetSchema.safeParse(t).success).toBe(true);
-    expect(cloudTargetSchema.safeParse({...t,segment:{...t.segment,end:31}}).success).toBe(false);
+    expect(cloudTargetSchema.safeParse({...t,segment:{...t.segment,end:61}}).success).toBe(false);
+    expect(cloudTargetSchema.safeParse({...t,segment:{...t.segment,end:60}}).success).toBe(true);
   });
   it("requires a persisted critique before approving an uploaded cloud clip", () => {
     expect(canApproveClip({video_path:"owner/clips/clip/video.mp4",viral_review:null})).toBe(false);

@@ -80,7 +80,7 @@ export function BatchClipper({ sourceId, cues, clips }: { sourceId: string; cues
 
   return <section className="mt-5 border border-border rounded-md p-4 bg-card space-y-3">
     <h3 className="font-medium flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" />Auto batch clipping</h3>
-    <p className="text-xs text-muted-foreground">Pick this video's MP4. Your AI finds every 20–30s moment, then each is cut to 9:16 with karaoke captions, saved to the cloud and AI-reviewed. Keep this tab open while it runs.</p>
+    <p className="text-xs text-muted-foreground">Pick this video's MP4. Your AI finds every 20–60s moment, then each is cut to 9:16 with karaoke captions, saved to the cloud and AI-reviewed. Keep this tab open while it runs.</p>
     <div className="flex flex-wrap gap-2 items-center">
       <Input aria-label="Source video file" type="file" accept="video/mp4" className="max-w-xs" disabled={busy} onChange={e => setFile(e.target.files?.[0] || null)} />
       <Button size="sm" disabled={busy || !file} onClick={runBatch}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}Auto-clip all</Button>

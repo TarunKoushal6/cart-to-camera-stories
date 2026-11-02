@@ -14,11 +14,11 @@ describe("Repurposing rules",()=>{
     const text = '{"segments":[{"title":"A","start":10,"end":35,"score":88,"reason":"x"},{"title":"B","start":100,"end":125,"score":70,"reason":"y"},{"title":"C","start":200,"end":2';
     expect(parseAiSegments(text, 1000).map((s) => s.title)).toEqual(["A", "B"]);
   });
-  it("drops clips outside 20–30 seconds or past the video end instead of failing all", async () => {
+  it("drops clips outside 20–60 seconds or past the video end instead of failing all", async () => {
     const { parseAiSegments } = await import("@/lib/studio-rules");
-    const text = JSON.stringify({ segments: [{ title: "ok", start: 0, end: 25, score: 80.6, reason: "" }, { title: "long", start: 0, end: 60, score: 50, reason: "" }, { title: "late", start: 990, end: 1015, score: 50, reason: "" }] });
+    const text = JSON.stringify({ segments: [{ title: "ok", start: 0, end: 25, score: 80.6, reason: "" }, { title: "minute", start: 100, end: 160, score: 60, reason: "" }, { title: "long", start: 0, end: 61, score: 50, reason: "" }, { title: "short", start: 300, end: 319, score: 50, reason: "" }, { title: "late", start: 990, end: 1015, score: 50, reason: "" }] });
     const r = parseAiSegments(text, 1000);
-    expect(r.map((s) => s.title)).toEqual(["ok"]);
+    expect(r.map((s) => s.title)).toEqual(["ok", "minute"]);
     expect(r[0]?.score).toBe(81);
   });
 });
