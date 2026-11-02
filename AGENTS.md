@@ -9,6 +9,7 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 
+- Subdirectories may have their own `AGENTS.md` (e.g. `public/cloud-clipper/`); read it before changing files there.
 - Server-only integrations live in `src/lib/*.server.ts` (AI, Firecrawl, video, Instagram); client calls go through `src/lib/ugc.functions.ts` — keeps secrets out of the browser.
 - Reels are ~20s: one 10s video job plus one 10s extension job, advanced by client polling of `pollVideo` — avoids long server requests.
 - Instagram posting moves posts scheduled → processing → published via `advancePost`, driven by the 5-minute `/api/public/jobs/publish-due` schedule and on-demand refreshes — Instagram processes videos asynchronously.
@@ -20,7 +21,6 @@
 - Personal AI and Facebook credentials are AES-GCM encrypted in service-role-only studio_credentials and accessed only after user authorization; prevents browser secret reads.
 - Studio AI calls go through withAi (src/lib/studio-ai-default.server.ts): owner's saved key first, then built-in Lovable AI (DEFAULT_AI, low-cost model via LOVABLE_API_KEY on chat-completions) when no key is saved, it can't be decrypted, or it's refused/down (401/402/403/429/5xx) — clipping works with no external keys; built-in 402/429 get actionable messages.
 - Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
-- Studio Meta posts advance via the existing protected publish-due schedule and manual refresh; asynchronous processing avoids long requests.
 
 - YouTube OAuth uses atomic single-use hashed states bound to the authenticated owner and stores encrypted offline tokens only in server-role tables; prevents callback forgery and credential exposure.
 - YouTube uploads stream saved MP4s to a validated Google resumable upload URL; Google publishAt schedules public release and the existing job polls processing status.
@@ -36,9 +36,8 @@
 - Cloud worker reports a stage/progress object on /jobs/{id}; the app reads it through a read-only progress function that never claims the job lease — keeps live progress cheap and separate from job advancement.
 - Cloud jobs attach each clip as soon as the worker lists it in `completed`, and a worker failure keeps already-finished clips before marking the job failed — long batches show results early and a late crash never discards finished work.
 - AI moment selection sends a condensed transcript (src/lib/transcript-condense.ts: filler removed, top-energy ~30s windows spread across the video) and drops clips outside the shown windows; reviews send plain timestamped lines — keeps long-video AI input ~80% smaller.
-- Background music is chosen per clip (job `music` mode + AI `vibe`) and mixed by the worker: licensed files in music/<vibe>/ first, else an FFmpeg-synthesised original bed, sidechain-ducked under speech; a failed mix falls back to original audio — the Worker runtime can't mix audio and clips must never be lost to music.
 - Stopping a cloud job marks it failed with STOPPED_MESSAGE, then best-effort calls the worker's `/jobs/{id}/cancel`; all job-state updates in advancement are guarded to active statuses so a late tick never revives a stopped job.
 - The root route clears the React Query cache whenever the signed-in user changes — cached videos/clips must never leak to the next account in the same browser.
 
 - The YouTube OAuth callback keeps the previously saved refresh_token when Google omits it on re-consent and shows only explicitly safe failure reasons (never codes/tokens), also posted to the opener — users see why connecting failed.
-- The clip page polls only its own new posts through `getPublishStatus` (advances Meta/YouTube processing rows, owner-scoped via RLS) every 4s until published/scheduled/failed; immediate Meta failures throw the stored platform error — users see real outcomes, never a false "started".
+- Studio Meta posts also advance via the publish-due schedule; the clip page polls only its own new posts through `getPublishStatus` (advances Meta/YouTube processing rows, owner-scoped via RLS) every 4s until published/scheduled/failed; immediate Meta failures throw the stored platform error — users see real outcomes, never a false "started".
