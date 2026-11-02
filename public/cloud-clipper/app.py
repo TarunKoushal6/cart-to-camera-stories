@@ -516,24 +516,68 @@ def escaped(s):
     # Do not allow transcript words to inject ASS formatting/directives.
     return s.replace('\\', '').replace('{', '').replace('}', '').replace('\n', ' ')
 
+# ---- Reel-style captions ----
+# White base text; the spoken word lights up in an accent colour (ASS colours are &HAABBGGRR).
+CAPTION_FONT = os.getenv('CAPTION_FONT', 'Arial Black')
+CAPTION_FONT_DEVANAGARI = os.getenv('CAPTION_FONT_DEVANAGARI', 'Noto Sans Devanagari')
+CAPTION_WHITE = '&H00FFFFFF'
+CAPTION_ACCENTS = ('&H00FFFF00', '&H0000FF33', '&H0000D7FF')  # electric cyan, neon lime, warm amber gold
+CAPTION_MAX_WORDS, CAPTION_MIN_WORDS, CAPTION_MAX_CHARS, CAPTION_GAP = 4, 3, 22, 0.6
+DEVANAGARI = re.compile('[\u0900-\u097F\uA8E0-\uA8FF]')
+
+def caption_word(s):
+    # NFC keeps Devanagari matras/virama attached; str.upper() leaves Devanagari untouched and only
+    # uppercases Latin letters, so Hindi/Hinglish never breaks.
+    return unicodedata.normalize('NFC', escaped(s)).strip().upper()
+
+def caption_groups(words):
+    groups, cur = [], []
+    for w in words:
+        if cur:
+            chars = sum(len(x['text']) + 1 for x in cur) + len(w['text'])
+            gap = w['start'] - cur[-1]['end']
+            ends_sentence = cur[-1]['text'][-1:] in '.!?।,'
+            if len(cur) >= CAPTION_MAX_WORDS or gap > CAPTION_GAP or (len(cur) >= CAPTION_MIN_WORDS and (chars > CAPTION_MAX_CHARS or ends_sentence)):
+                groups.append(cur); cur = []
+        cur.append(w)
+    if cur:
+        groups.append(cur)
+    return groups
+
+def caption_lines(cues, start, end):
+    words = []
+    for c in cues:
+        if c['end'] > start and c['start'] < end:
+            text = caption_word(c['text'])
+            if text:
+                words.append({'start': max(start, c['start']), 'end': min(end, c['end']), 'text': text})
+    lines = []
+    for gi, group in enumerate(caption_groups(words)):
+        accent = CAPTION_ACCENTS[gi % len(CAPTION_ACCENTS)]
+        font = '{\\fn%s}' % CAPTION_FONT_DEVANAGARI if any(DEVANAGARI.search(w['text']) for w in group) else ''
+        group_end = group[-1]['end']
+        for i, w in enumerate(group):
+            a = w['start']; b = group[i + 1]['start'] if i + 1 < len(group) else group_end
+            if b - a < 0.01:
+                continue
+            parts = [('{\\c%s\\fscx112\\fscy112}%s{\\c%s\\fscx100\\fscy100}' % (accent, x['text'], CAPTION_WHITE)) if j == i else x['text'] for j, x in enumerate(group)]
+            lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{font}{" ".join(parts)}')
+    return lines
+
 def captions(path, cues, start, end):
-    header = '''[Script Info]
+    header = f'''[Script Info]
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
+WrapStyle: 0
+ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Main,Noto Sans Devanagari,44,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,45,45,250,1
+Style: Main,{CAPTION_FONT},48,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,4,2,2,50,50,380,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
-    words = [c for c in cues if c['end'] > start and c['start'] < end]
-    lines = []
-    for i in range(0, len(words), 5):
-        group = words[i:i+5]; a = max(start, group[0]['start']); b = min(end, group[-1]['end'])
-        text = ''.join('{\\kf%d}%s ' % (max(1, round((min(end,w['end'])-max(start,w['start']))*100)), escaped(w['text'])) for w in group)
-        lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{text.strip()}')
-    path.write_text(header + '\n'.join(lines), encoding='utf-8')
+    path.write_text(header + '\n'.join(caption_lines(cues, start, end)), encoding='utf-8')
 
 
 # ---- Royalty-free background music ----
