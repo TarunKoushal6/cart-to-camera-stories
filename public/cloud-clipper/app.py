@@ -530,6 +530,10 @@ def caption_word(s):
     # uppercases Latin letters, so Hindi/Hinglish never breaks.
     return unicodedata.normalize('NFC', escaped(s)).strip().upper()
 
+def font_word(text):
+    # Hindi words switch to the Devanagari font; Latin words keep the heavy display font.
+    return '{\\fn%s}%s{\\fn%s}' % (CAPTION_FONT_DEVANAGARI, text, CAPTION_FONT) if DEVANAGARI.search(text) else text
+
 def caption_groups(words):
     groups, cur = [], []
     for w in words:
@@ -560,14 +564,13 @@ def caption_lines(cues, start, end):
     lines = []
     for gi, group in enumerate(caption_groups(words)):
         accent = CAPTION_ACCENTS[gi % len(CAPTION_ACCENTS)]
-        font = '{\\fn%s}' % CAPTION_FONT_DEVANAGARI if any(DEVANAGARI.search(w['text']) for w in group) else ''
         group_end = group[-1]['end']
         for i, w in enumerate(group):
             a = w['start']; b = group[i + 1]['start'] if i + 1 < len(group) else group_end
             if b - a < 0.01:
                 continue
-            parts = [('{\\c%s\\fscx112\\fscy112}%s{\\c%s\\fscx100\\fscy100}' % (accent, x['text'], CAPTION_WHITE)) if j == i else x['text'] for j, x in enumerate(group)]
-            lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{font}{" ".join(parts)}')
+            parts = [('{\\c%s\\fscx112\\fscy112}%s{\\c%s\\fscx100\\fscy100}' % (accent, font_word(x['text']), CAPTION_WHITE)) if j == i else font_word(x['text']) for j, x in enumerate(group)]
+            lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{" ".join(parts)}')
     return lines
 
 def captions(path, cues, start, end):
