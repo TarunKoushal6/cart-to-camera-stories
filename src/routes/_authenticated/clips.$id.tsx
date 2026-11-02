@@ -23,7 +23,7 @@ export const Route = createFileRoute("/_authenticated/clips/$id")({
 });
 
 type PlatformId = "youtube" | "instagram" | "facebook";
-type Run = { postId?: string; phase: PublishPhase; error?: string; at?: string | null };
+type Run = { postId?: string | undefined; phase: PublishPhase; error?: string | undefined; at?: string | null | undefined };
 const errText = (e: unknown) => e instanceof Error ? e.message : "Publishing failed";
 
 function PublishStudio() {
