@@ -34,10 +34,12 @@ export function makeAss(cues:Cue[],style:CaptionStyle) {
   const rows:string[]=[];
   captionGroups(words).forEach((group,gi)=>{
     const accent=CAPTION_ACCENTS[gi%CAPTION_ACCENTS.length];
-    const groupEnd=group[group.length-1].end;
-    if(style!=="karaoke"){rows.push(`Dialogue: 0,${assTime(group[0].start)},${assTime(groupEnd)},Default,,0,0,0,,${group.map(w=>w.text).join(" ")}`);return;}
+    const first=group[0],last=group[group.length-1];
+    if(!first||!last)return;
+    const groupEnd=last.end;
+    if(style!=="karaoke"){rows.push(`Dialogue: 0,${assTime(first.start)},${assTime(groupEnd)},Default,,0,0,0,,${group.map(w=>w.text).join(" ")}`);return;}
     group.forEach((w,i)=>{
-      const end=i+1<group.length?group[i+1].start:groupEnd;
+      const end=group[i+1]?.start??groupEnd;
       if(end-w.start<0.01)return;
       const text=group.map((x,j)=>j===i?`{\\c${accent}\\fscx112\\fscy112}${x.text}{\\c${WHITE}\\fscx100\\fscy100}`:x.text).join(" ");
       rows.push(`Dialogue: 0,${assTime(w.start)},${assTime(end)},Default,,0,0,0,,${text}`);
