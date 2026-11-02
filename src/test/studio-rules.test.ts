@@ -7,7 +7,9 @@ describe("Repurposing rules",()=>{
  it("allows clips up to 60 seconds but not longer",()=>{expect(segmentSchema.safeParse({title:"Hook",start:5,end:65,score:80,reason:"Hook"}).success).toBe(true);expect(segmentSchema.safeParse({title:"Hook",start:5,end:66,score:80,reason:"Hook"}).success).toBe(false);});
  it("preserves timed multilingual captions",()=>{expect(parseTranscript("1\n00:00:05,000 --> 00:00:08,500\nनमस्ते hello")).toEqual([{start:5,end:8.5,text:"नमस्ते hello"}]);});
  it("maps source timestamps into the selected clip",()=>{expect(clipCues([{start:4,end:7,text:"hello"},{start:30,end:31,text:"bye"}],5,25)).toEqual([{start:0,end:2,text:"hello"}]);});
- it("creates word-timed karaoke for burned subtitles",()=>{expect(makeAss([{start:0,end:2,text:"hello world"}],"karaoke")).toContain("{\\k100}HELLO {\\k100}WORLD");});
+ it("highlights only the spoken word, uppercase, on white text",()=>{const a=makeAss([{start:0,end:2,text:"hello world"}],"karaoke");expect(a).toContain("Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{\\c&H00FFFF00\\fscx112\\fscy112}HELLO{\\c&H00FFFFFF\\fscx100\\fscy100} WORLD");expect(a).toContain("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,HELLO {\\c&H00FFFF00");});
+ it("groups captions into at most 4 words and rotates accent colours",()=>{const a=makeAss([{start:0,end:8,text:"one two three four five six seven eight"}],"karaoke");expect(a).toContain("ONE TWO THREE FOUR");expect(a).not.toContain("FOUR FIVE");expect(a).toContain("{\\c&H0000FF33\\fscx112\\fscy112}FIVE");});
+ it("keeps Hindi words intact when uppercasing",()=>{expect(makeAss([{start:0,end:2,text:"नमस्ते hello"}],"karaoke")).toContain("नमस्ते HELLO");});
 });describe("AI segment parsing", () => {
   it("keeps complete clips when the AI reply is cut off mid-list", async () => {
     const { parseAiSegments } = await import("@/lib/studio-rules");
