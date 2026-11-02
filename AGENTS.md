@@ -18,7 +18,7 @@
 
 - The primary Cutline studio uses owner-scoped studio_sources, studio_clips and studio_posts; legacy product routes remain to preserve existing content.
 - Personal AI and Facebook credentials are AES-GCM encrypted in service-role-only studio_credentials and accessed only after user authorization; prevents browser secret reads.
-- Studio AI calls go through withAi (src/lib/studio-ai-default.server.ts): owner's saved key first, then the shared default endpoint keys (DEFAULT_AI_KEY_BACKUP tried first as the active key, then DEFAULT_AI_KEY) on key refusal (401/402/403/429); never Lovable AI — accounts without a working key still work and billing stays off workspace credits.
+- Studio AI calls go through withAi (src/lib/studio-ai-default.server.ts): owner's saved key first, then built-in Lovable AI (DEFAULT_AI, low-cost model via LOVABLE_API_KEY on chat-completions) when no key is saved, it can't be decrypted, or it's refused/down (401/402/403/429/5xx) — clipping works with no external keys; built-in 402/429 get actionable messages.
 - Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
 - Studio Meta posts advance via the existing protected publish-due schedule and manual refresh; asynchronous processing avoids long requests.
 
@@ -39,3 +39,5 @@
 - Background music is chosen per clip (job `music` mode + AI `vibe`) and mixed by the worker: licensed files in music/<vibe>/ first, else an FFmpeg-synthesised original bed, sidechain-ducked under speech; a failed mix falls back to original audio — the Worker runtime can't mix audio and clips must never be lost to music.
 - Stopping a cloud job marks it failed with STOPPED_MESSAGE, then best-effort calls the worker's `/jobs/{id}/cancel`; all job-state updates in advancement are guarded to active statuses so a late tick never revives a stopped job.
 - The root route clears the React Query cache whenever the signed-in user changes — cached videos/clips must never leak to the next account in the same browser.
+
+- The YouTube OAuth callback keeps the previously saved refresh_token when Google omits it on re-consent and shows only explicitly safe failure reasons (never codes/tokens), also posted to the opener — users see why connecting failed.
