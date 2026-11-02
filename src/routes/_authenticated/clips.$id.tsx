@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Loader2, RotateCcw, Send, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -198,7 +198,7 @@ function PublishStudio() {
   </div>;
 }
 
-function PublishStatus({ label, icon: Icon, run, onRetry, reconnect }: { label: string; icon: typeof Youtube; run: Run; onRetry: () => void; reconnect: React.ReactNode }) {
+function PublishStatus({ label, icon: Icon, run, onRetry, reconnect }: { label: string; icon: typeof Youtube; run: Run; onRetry: () => void; reconnect: ReactNode }) {
   if (run.phase === "published") return <div role="status" className="rounded-md border border-success/50 bg-success/15 p-4 flex gap-3">
     <CheckCircle2 className="h-6 w-6 text-success shrink-0" /><div><p className="font-semibold text-success">{label}: published</p>
       <p className="text-sm text-muted-foreground mt-1">Your clip is live. Views and likes appear in Analytics within a few hours.</p></div></div>;
