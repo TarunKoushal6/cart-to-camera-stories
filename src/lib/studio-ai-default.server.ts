@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { providers, type Provider } from "./studio-rules";
 
-/** Shared fallback endpoint for accounts without a working personal AI key. Keys live in server secrets. */
-export const DEFAULT_AI = { provider: "custom" as Provider, model: "qwen3.8-flash", baseUrl: "https://api.iceyyy.dev/v1" };
+/** Built-in default for accounts without a working personal AI key: Lovable AI's low-cost model
+ * through the OpenAI-compatible chat-completions endpoint, authenticated with the server-only LOVABLE_API_KEY. */
+export const DEFAULT_AI = { provider: "custom" as Provider, model: "google/gemini-2.5-flash-lite", baseUrl: "https://ai.gateway.lovable.dev/v1" };
 
 export type AiCredential = { provider: Provider; model: string; key: string; baseUrl: string | null; shared: boolean };
 type Saved = { provider: string; model: string | null; base_url: string | null; encrypted_key: string } | null | undefined;
@@ -17,15 +18,23 @@ export function savedKeyUnusable(e: unknown) {
   return e instanceof AiRequestError && ([401, 402, 403, 429].includes(e.status) || e.status >= 500);
 }
 
-/** The hermes key (stored as DEFAULT_AI_KEY_BACKUP) is the primary active shared key; DEFAULT_AI_KEY is the fallback. */
+/** The built-in Lovable AI credential, available whenever LOVABLE_API_KEY is configured on the server. */
 export function sharedAiCredentials(env: Record<string, string | undefined> = process.env): AiCredential[] {
-  return [...new Set([env["DEFAULT_AI_KEY_BACKUP"], env["DEFAULT_AI_KEY"]].filter((k): k is string => !!k))]
-    .map(key => ({ provider: DEFAULT_AI.provider, model: DEFAULT_AI.model, key, baseUrl: DEFAULT_AI.baseUrl, shared: true }));
+  const key = env["LOVABLE_API_KEY"];
+  return key ? [{ provider: DEFAULT_AI.provider, model: DEFAULT_AI.model, key, baseUrl: DEFAULT_AI.baseUrl, shared: true }] : [];
 }
 
-/** Runs an AI call with the owner's saved key, then the hermes shared key, then the other shared key.
- * A refused (401/402/403/429) or undecryptable personal key never surfaces; if every shared key fails,
- * the active (first) shared key's error is reported, not the personal key's or the stale fallback's. */
+/** Turns built-in AI failures into messages that name the fix instead of a bare status code. */
+export function explainDefaultAiError(e: unknown): unknown {
+  if (!(e instanceof AiRequestError)) return e;
+  if (e.status === 402) return new AiRequestError("The built-in AI has run out of credits. Add credits to the workspace, or save your own AI key in Settings.", 402);
+  if (e.status === 429) return new AiRequestError("The built-in AI is busy right now (rate limited). Wait a minute and try again.", 429);
+  if (e.status === 401) return new AiRequestError("The built-in AI isn't configured correctly. Save your own AI key in Settings meanwhile.", 401);
+  return e;
+}
+
+/** Runs an AI call with the owner's saved key, falling back to the built-in Lovable AI when no personal key is saved,
+ * it can't be decrypted, or the provider refused it (401/402/403/429) or is down (5xx). */
 export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredential) => Promise<T>): Promise<T> {
   const shared = sharedAiCredentials();
   if (saved?.model) {
@@ -41,7 +50,7 @@ export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredent
   if (!shared.length) throw new Error("Save your AI endpoint, key and model in Settings first.");
   let first: unknown;
   for (const c of shared) {
-    try { return await run(c); } catch (e) { first ??= e; }
+    try { return await run(c); } catch (e) { first ??= explainDefaultAiError(e); }
   }
   throw first;
 }
