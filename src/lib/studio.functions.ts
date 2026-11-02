@@ -102,8 +102,29 @@ export const publishStudioClip=createServerFn({method:"POST"}).middleware([requi
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
   const {data:p,error}=await supabaseAdmin.from("studio_posts").insert({user_id:context.userId,clip_id:data.clipId,platform:data.platform,caption:data.caption,scheduled_at:data.scheduledAt || new Date().toISOString()}).select("*").single();
   if(error) throw new Error("Couldn't queue the post.");
-  if(!data.scheduledAt){ const {advanceStudioPost}=await import("./studio-meta.server"); await advanceStudioPost(supabaseAdmin,p,process.env["STUDIO_ENCRYPTION_KEY"] || ""); }
-  return {id:p.id};
+  if(!data.scheduledAt){
+    const {advanceStudioPost}=await import("./studio-meta.server");
+    const status=await advanceStudioPost(supabaseAdmin,p,process.env["STUDIO_ENCRYPTION_KEY"] || "");
+    // Surface the platform's real rejection immediately instead of reporting "started".
+    if(status==="failed"){ const {data:row}=await supabaseAdmin.from("studio_posts").select("error").eq("id",p.id).single(); throw new Error(row?.error || "Publishing failed"); }
+    return {id:p.id,status};
+  }
+  return {id:p.id,status:"scheduled"};
+});
+export const getPublishStatus=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({meta:z.array(z.string().uuid()).max(5),youtube:z.array(z.string().uuid()).max(5)}).parse(d)).handler(async({data,context})=>{
+  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
+  const secret=process.env["STUDIO_ENCRYPTION_KEY"] || "";
+  // Owner-scoped reads (RLS) decide which posts this caller may advance.
+  const meta=data.meta.length?(await context.supabase.from("studio_posts").select("*").in("id",data.meta)).data||[]:[];
+  const yt=data.youtube.length?(await context.supabase.from("youtube_posts").select("*").in("id",data.youtube)).data||[]:[];
+  const {advanceStudioPost}=await import("./studio-meta.server");
+  for(const p of meta) if(p.status==="processing"||(p.status==="scheduled"&&Date.parse(p.scheduled_at)<=Date.now())) await advanceStudioPost(supabaseAdmin,p,secret);
+  const {pollYouTubePost}=await import("./youtube-publishing.server");
+  for(const p of yt) if(p.status==="processing") await pollYouTubePost(supabaseAdmin,p);
+  const pick="id,status,error,media_id,scheduled_at";
+  const m2=data.meta.length?(await context.supabase.from("studio_posts").select(pick).in("id",data.meta)).data||[]:[];
+  const y2=data.youtube.length?(await context.supabase.from("youtube_posts").select(pick).in("id",data.youtube)).data||[]:[];
+  return {meta:m2,youtube:y2};
 });
 export const refreshStudioPosts=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).handler(async({context})=>{
   const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
