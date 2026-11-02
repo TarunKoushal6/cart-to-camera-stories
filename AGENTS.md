@@ -26,7 +26,7 @@
 - YouTube uploads stream saved MP4s to a validated Google resumable upload URL; Google publishAt schedules public release and the existing job polls processing status.
 - YouTube counts come from videos.list statistics and join Meta metrics in the UI; missing counts remain unknown rather than zero.
 - Custom AI endpoints are OpenAI-compatible chat-completions bases stored per user in studio_credentials.base_url; model lists come from the provider's /models endpoint — keeps any provider working without code changes.
-- Clips require a persisted personal-AI critique and owner approval before publishing; the clip page's Post Now/Schedule click is the approval (runs the review first if missing), edits invalidate approval and database triggers gate Meta and YouTube queues — guarantees nothing posts without explicit consent.
+- Clips require a saved video and owner approval before publishing (AI critique is optional); the clip page's Post Now/Schedule click is the approval, edits invalidate approval and database triggers gate Meta and YouTube queues — guarantees nothing posts without explicit consent.
 - Caption text comes from free transcript windows and transcription runs in a browser Whisper worker; missing transcripts use explicitly provisional outline-based analysis — avoids transcription credit charges and pretending AI watched footage.
 - Edge speech uses an authenticated server wrapper and Worker WebSocket upgrade with the current consumer token protocol; never silently fall back to paid speech — keeps generation key-free and makes service unavailability explicit.
 - Batch clipping runs in the browser (FFmpeg WASM) per source file, then AI-reviews; approving schedules next-day slots — the Worker cannot render video.

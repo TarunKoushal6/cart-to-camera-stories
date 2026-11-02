@@ -35,7 +35,7 @@ async function account(admin: SupabaseClient<Database>, post: Post, secret: stri
 export async function advanceStudioPost(admin: SupabaseClient<Database>, post: Post, secret: string) {
   try {
     const {data:approval}=await admin.from("studio_clips").select("approved_at,caption,viral_review").eq("id",post.clip_id).eq("user_id",post.user_id).single();
-    if(!approval?.approved_at||!approval.viral_review||approval.caption!==post.caption)throw new Error("Clip approval changed. Review and approve again before posting.");
+    if(!approval?.approved_at||approval.caption!==post.caption)throw new Error("Clip approval changed. Approve again before posting.");
     const a = await account(admin,post,secret);
     if (post.status === "scheduled") {
       const { data: clip } = await admin.from("studio_clips").select("video_path").eq("id",post.clip_id).eq("user_id",post.user_id).single();
