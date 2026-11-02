@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
-import { ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Loader2, Send, Youtube } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Facebook, Film, Instagram, Loader2, RotateCcw, Send, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { approveClip, getStudioSettings, publishStudioClip, saveClipPlan } from "@/lib/studio.functions";
+import { approveClip, getPublishStatus, getStudioSettings, publishStudioClip, saveClipPlan } from "@/lib/studio.functions";
+import { PHASES, isFinalPhase, needsReconnect, phasePercent, publishPhase, type PublishPhase } from "@/lib/publish-progress-rules";
+import { Progress } from "@/components/ui/progress";
 import { getYouTubeConnection, publishYouTubeClip } from "@/lib/youtube-publishing.functions";
 import { useYouTubeConnect } from "@/components/youtube-connection";
 import { viralReviewSchema } from "@/lib/clip-review-rules";
@@ -21,13 +23,18 @@ export const Route = createFileRoute("/_authenticated/clips/$id")({
 });
 
 type PlatformId = "youtube" | "instagram" | "facebook";
+type Run = { postId?: string | undefined; phase: PublishPhase; error?: string | undefined; at?: string | null | undefined };
+const errText = (e: unknown) => e instanceof Error ? e.message : "Publishing failed";
 
 function PublishStudio() {
   const { id } = Route.useParams(), qc = useQueryClient();
   const savePlan = useServerFn(saveClipPlan), approve = useServerFn(approveClip);
   const publishMeta = useServerFn(publishStudioClip), publishYT = useServerFn(publishYouTubeClip);
   const getSettings = useServerFn(getStudioSettings), getYT = useServerFn(getYouTubeConnection);
-  const ytConnect = useYouTubeConnect();
+  const ytConnect = useYouTubeConnect(), pollStatus = useServerFn(getPublishStatus);
+  const [runs, setRuns] = useState<Partial<Record<PlatformId, Run>>>({});
+  const pending = (Object.entries(runs) as [PlatformId, Run][]).filter(([, r]) => r.postId && !isFinalPhase(r.phase));
+  const startedAt = useRef(0);
 
   const { data: clip, isLoading, error } = useQuery({ queryKey: ["studio-clip", id], queryFn: async () => {
     const r = await supabase.from("studio_clips").select("*").eq("id", id).single(); if (r.error) throw r.error; return r.data; } });
@@ -45,6 +52,29 @@ function PublishStudio() {
     if (clip?.video_path) supabase.storage.from("videos").createSignedUrl(clip.video_path, 3600).then(r => { if (active) setVideoUrl(r.data?.signedUrl || ""); });
     return () => { active = false; }; }, [clip?.video_path]);
 
+  // Poll only this page's posts every 4s until each one is published, scheduled or failed (stops after 15 min).
+  const pendingKey = pending.map(([k, r]) => `${k}:${r.postId}`).join(",");
+  useEffect(() => {
+    if (!pendingKey) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop) return;
+      if (Date.now() - startedAt.current > 15 * 60_000) return;
+      const list = pendingKey.split(",").map(x => x.split(":") as [PlatformId, string]);
+      try {
+        const r = await pollStatus({ data: { meta: list.filter(([k]) => k !== "youtube").map(([, id]) => id), youtube: list.filter(([k]) => k === "youtube").map(([, id]) => id) } });
+        if (stop) return;
+        setRuns(prev => { const next = { ...prev };
+          for (const [k, id] of list) { const row = (k === "youtube" ? r.youtube : r.meta).find(x => x.id === id);
+            if (row) next[k] = { postId: id, phase: publishPhase(row), error: row.error || undefined, at: row.scheduled_at }; }
+          return next; });
+      } catch { /* transient; next tick retries */ }
+      if (!stop) timer = setTimeout(tick, 4000);
+    };
+    let timer = setTimeout(tick, 2500);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [pendingKey]);
+
   if (isLoading) return <p className="text-muted-foreground">Loading clip…</p>;
   if (error || !clip) return <p className="text-destructive">Clip not found.</p>;
 
@@ -58,26 +88,44 @@ function PublishStudio() {
   const critique = viralReviewSchema.safeParse(clip.viral_review);
   const ready = Boolean(clip.video_path);
 
+  async function prepare(caption: string) {
+    // Clicking Post/Schedule/Retry is the owner's explicit approval; no AI review is required.
+    if (!clip) return;
+    if (caption !== clip.caption) await savePlan({ data: { clipId: id, caption, voiceover: clip.voiceover || "" } });
+    await approve({ data: { clipId: id } });
+  }
+
+  async function postOne(pid: PlatformId, caption: string, scheduledAt: string | null) {
+    setRuns(prev => ({ ...prev, [pid]: { phase: "uploading" } }));
+    try {
+      const r = pid === "youtube"
+        ? await publishYT({ data: { clipId: id, ...youtubeFields(text), privacy: scheduledAt ? "public" : privacy, scheduledAt, madeForKids: false } })
+        : await publishMeta({ data: { clipId: id, platform: pid, caption, scheduledAt } });
+      const phase: PublishPhase = scheduledAt && pid !== "youtube" ? "scheduled" : "processing";
+      setRuns(prev => ({ ...prev, [pid]: { postId: r.id, phase, at: scheduledAt } }));
+    } catch (e) { setRuns(prev => ({ ...prev, [pid]: { phase: "failed", error: errText(e) } })); }
+  }
+
   async function post(mode: "now" | "schedule") {
     if (!clip || !targets.length) return;
     const scheduledAt = mode === "schedule" && when ? new Date(when).toISOString() : null;
     if (mode === "schedule" && (!scheduledAt || Date.parse(scheduledAt) <= Date.now())) { toast.error("Choose a future time to schedule."); return; }
-    setBusy(mode);
+    setBusy(mode); startedAt.current = Date.now();
+    const caption = composeCaption(text);
+    setRuns(Object.fromEntries(targets.map(p => [p.id, { phase: "uploading" } as Run])));
     try {
-      const caption = composeCaption(text);
-      // Clicking Post/Schedule is the owner's explicit approval; no AI review is required.
-      if (caption !== clip.caption) await savePlan({ data: { clipId: id, caption, voiceover: clip.voiceover || "" } });
-      await approve({ data: { clipId: id } });
-      const results = await Promise.allSettled(targets.map(p => p.id === "youtube"
-        ? publishYT({ data: { clipId: id, ...youtubeFields(text), privacy: scheduledAt ? "public" : privacy, scheduledAt, madeForKids: false } })
-        : publishMeta({ data: { clipId: id, platform: p.id, caption, scheduledAt } })));
-      results.forEach((r, i) => {
-        const name = targets[i]!.label;
-        if (r.status === "fulfilled") toast.success(scheduledAt ? `${name}: scheduled` : `${name}: posting started`);
-        else toast.error(`${name}: ${r.reason instanceof Error ? r.reason.message : "failed"}`);
-      });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't post this clip"); }
-    finally { setBusy(""); qc.invalidateQueries({ queryKey: ["studio-clip", id] }); }
+      await prepare(caption);
+      await Promise.all(targets.map(p => postOne(p.id, caption, scheduledAt)));
+    } catch (e) {
+      const message = errText(e);
+      setRuns(Object.fromEntries(targets.map(p => [p.id, { phase: "failed", error: message } as Run])));
+    } finally { setBusy(""); qc.invalidateQueries({ queryKey: ["studio-clip", id] }); }
+  }
+
+  async function retry(pid: PlatformId) {
+    const caption = composeCaption(text); startedAt.current = Date.now();
+    try { await prepare(caption); await postOne(pid, caption, null); }
+    catch (e) { setRuns(prev => ({ ...prev, [pid]: { phase: "failed", error: errText(e) } })); }
   }
 
   return <div>
@@ -125,6 +173,14 @@ function PublishStudio() {
               <option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>}
         </section>
 
+        {Object.keys(runs).length > 0 && <section aria-label="Publishing status" className="space-y-3">
+          <h2 className="font-display text-lg font-bold">Publishing status</h2>
+          {platforms.filter(p => runs[p.id]).map(p => <PublishStatus key={p.id} label={p.label} icon={p.icon} run={runs[p.id]!}
+            onRetry={() => retry(p.id)}
+            reconnect={p.id === "youtube" ? <Button size="sm" variant="outline" disabled={ytConnect.busy} onClick={ytConnect.connect}>Reconnect YouTube</Button>
+              : <Button size="sm" variant="outline" asChild><Link to={p.id === "instagram" ? "/instagram" : "/settings"}>Reconnect {p.id === "instagram" ? "Instagram" : "Facebook"}</Link></Button>} />)}
+        </section>}
+
         <section className="space-y-4">
           <Button size="lg" className="w-full sm:w-auto h-12 px-8 text-base" disabled={!!busy || !ready || !targets.length} onClick={() => post("now")}>
             {busy === "now" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}{busy === "now" ? "Posting…" : `Post Now${targets.length ? ` to ${targets.length}` : ""}`}</Button>
@@ -139,5 +195,29 @@ function PublishStudio() {
         </section>
       </div>
     </div>
+  </div>;
+}
+
+function PublishStatus({ label, icon: Icon, run, onRetry, reconnect }: { label: string; icon: typeof Youtube; run: Run; onRetry: () => void; reconnect: ReactNode }) {
+  if (run.phase === "published") return <div role="status" className="rounded-md border border-success/50 bg-success/15 p-4 flex gap-3">
+    <CheckCircle2 className="h-6 w-6 text-success shrink-0" /><div><p className="font-semibold text-success">{label}: published</p>
+      <p className="text-sm text-muted-foreground mt-1">Your clip is live. Views and likes appear in Analytics within a few hours.</p></div></div>;
+  if (run.phase === "scheduled") return <div role="status" className="rounded-md border border-success/50 bg-success/15 p-4 flex gap-3">
+    <CalendarClock className="h-6 w-6 text-success shrink-0" /><div><p className="font-semibold text-success">{label}: scheduled</p>
+      <p className="text-sm text-muted-foreground mt-1">{run.at ? `Goes live ${new Date(run.at).toLocaleString()}.` : "Queued for its scheduled time."}</p></div></div>;
+  if (run.phase === "failed") return <div role="alert" className="rounded-md border border-destructive/60 bg-destructive/15 p-4 flex gap-3">
+    <AlertTriangle className="h-6 w-6 text-destructive shrink-0" /><div className="min-w-0 flex-1"><p className="font-semibold text-destructive">{label}: posting failed</p>
+      <p className="text-sm mt-1 break-words">{run.error || "The platform rejected this post."}</p>
+      <div className="flex flex-wrap gap-2 mt-3">{needsReconnect(run.error) && reconnect}
+        <Button size="sm" variant="outline" onClick={onRetry}><RotateCcw className="h-4 w-4" />Retry</Button></div></div></div>;
+  const idx = run.phase === "uploading" ? 0 : 1;
+  return <div className="rounded-md border border-border bg-card p-4">
+    <div className="flex items-center gap-2"><Icon className="h-5 w-5" /><p className="font-medium flex-1">{label}</p>
+      <span className="text-sm text-muted-foreground inline-flex items-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" />{PHASES[idx]!.label}…</span></div>
+    <Progress value={phasePercent(run.phase)} className="mt-3 h-2" aria-label={`${label} progress`} />
+    <ol className="mt-2 grid grid-cols-3 text-xs">
+      {PHASES.map((s, i) => <li key={s.id} className={`${i === 1 ? "text-center" : i === 2 ? "text-right" : ""} ${i <= idx ? "text-foreground font-medium" : "text-muted-foreground"}`}>{s.label}</li>)}
+    </ol>
+    {run.phase === "processing" && <p className="text-xs text-muted-foreground mt-2">The platform is processing your video. This usually takes 1–5 minutes; you can leave this page.</p>}
   </div>;
 }

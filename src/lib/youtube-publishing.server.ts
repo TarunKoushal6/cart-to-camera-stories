@@ -43,7 +43,7 @@ export async function pollYouTubePost(admin:Admin,post:Database["public"]["Table
     const token=await accessToken(admin,post.user_id);
     const r=await googleJson<{items?:{status:{uploadStatus:string;privacyStatus:string;publishAt?:string};processingDetails?:{processingStatus:string}}[]}>(await fetch(`${API}/videos?part=status,processingDetails&id=${encodeURIComponent(post.media_id)}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(20000)}));
     const v=r.items?.[0];if(!v)throw new Error("YouTube video is unavailable or was deleted.");
-    if(["failed","rejected","deleted"].includes(v.status.uploadStatus)||v.processingDetails?.processingStatus==="failed")throw new Error("YouTube could not process this video.");
+    if(["failed","rejected","deleted"].includes(v.status.uploadStatus)||v.processingDetails?.processingStatus==="failed"){await admin.from("youtube_posts").update({status:"failed",error:`YouTube could not process this video (${v.status.uploadStatus}).`}).eq("id",post.id);return;}
     const ready=v.status.uploadStatus==="processed"||v.processingDetails?.processingStatus==="succeeded";
     if(!ready)return;
     const status=post.scheduled_at&&v.status.privacyStatus!=="public"?"scheduled":"published";
