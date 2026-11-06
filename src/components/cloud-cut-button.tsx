@@ -32,6 +32,13 @@ function useCloudCut(sourceId?: string) {
       return r.data[0] ?? null;
     } });
   const active = Boolean(job && ACTIVE.includes(job.status));
+  const shownSkip = useRef<string | null>(null);
+  useEffect(() => {
+    if (job?.status === "failed" && job.error?.includes("NO_CAPTIONS") && shownSkip.current !== job.id) {
+      shownSkip.current = job.id;
+      toast.error("Video skipped — no captions", { description: "This YouTube video has no captions (CC), so it was not downloaded or processed. Try another video that has captions.", duration: 15000 });
+    }
+  }, [job?.id, job?.status]);
   const { data: live } = useQuery({ queryKey: ["cloud-progress", job?.id, job?.status], refetchInterval: 3000,
     enabled: Boolean(job && ["transcribing", "rendering"].includes(job.status)),
     queryFn: () => readProgress({ data: { jobId: job!.id } }) });

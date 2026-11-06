@@ -450,6 +450,11 @@ def download(job, url):
         check_stop(job)
         d = folder(job)
         sub_cues = youtube_subtitles(job, url, d) if ENGINE == 'cutline' else None
+        if sub_cues is None and ENGINE == 'cutline' and os.getenv('ALLOW_WHISPER', '0') != '1':
+            time.sleep(5)  # one retry: YouTube often rate-limits the first subtitle request
+            sub_cues = youtube_subtitles(job, url, d)
+            if sub_cues is None:
+                raise StepError('NO_CAPTIONS: This video has no YouTube captions, so it was skipped (no download, no slow transcription). Try a video that has captions (CC).')
         write(job, stage='downloading', progress={})
         if ENGINE == 'openshorts':
             from openshorts_adapter import download_source
@@ -457,8 +462,6 @@ def download(job, url):
         else:
             source = ytdlp(job, url, d)
         if source is None: raise StepError('No video downloaded')
-        if sub_cues is None and ENGINE == 'cutline':
-            sub_cues = youtube_subtitles(job, url, d)  # retry: early fetch is often rate-limited
         size = source.stat().st_size
         if size > 2 * 1024**3: raise StepError('Source exceeds 2 GB')
         write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size})
