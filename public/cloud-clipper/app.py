@@ -328,7 +328,7 @@ def ytdlp(job, url, d):
     return source
 
 # ---- YouTube subtitles fast-path: skips CPU transcription when captions already exist ----
-SUB_LANGS = os.getenv('YOUTUBE_SUB_LANGS', 'en,hi,en-orig,hi-orig')
+SUB_LANGS = os.getenv('YOUTUBE_SUB_LANGS', 'hi-orig,en-orig,hi,en')
 TIME_RE = re.compile(r'(\d+:)?(\d{1,2}):(\d{2})[.,](\d{3})')
 CUE_RE = re.compile(r'^\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})')
 INLINE_RE = re.compile(r'<((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})>')
@@ -408,8 +408,17 @@ def youtube_subtitles(job, url, d):
         try: f.unlink()
         except OSError: pass
     def attempt(cookies):
+        # One language per call: a 429 on an auto-translated track would otherwise abort the whole
+        # request and push Hindi videos with real captions into slow CPU Whisper.
+        out_all, code = '', 1
+        for lang in [l.strip() for l in SUB_LANGS.split(',') if l.strip()]:
+            check_stop(job)
+            code, out = attempt_lang(cookies, lang); out_all += out
+            if [f for f in d.glob('subs.*') if f.suffix in ('.vtt', '.srt')]: return 0, out_all
+        return code, out_all
+    def attempt_lang(cookies, lang):
         args = ['yt-dlp', '--no-playlist', '--skip-download', '--write-sub', '--write-auto-sub',
-                '--sub-lang', SUB_LANGS, '--sub-format', 'vtt/srt/best', *extractor_args(cookies), *cookies,
+                '--sleep-subtitles', '1', '--sub-lang', lang, '--sub-format', 'vtt/srt/best', *extractor_args(cookies), *cookies,
                 '-o', str(d / 'subs.%(ext)s'), url]
         try:
             r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180, text=True, errors='replace')
@@ -448,6 +457,8 @@ def download(job, url):
         else:
             source = ytdlp(job, url, d)
         if source is None: raise StepError('No video downloaded')
+        if sub_cues is None and ENGINE == 'cutline':
+            sub_cues = youtube_subtitles(job, url, d)  # retry: early fetch is often rate-limited
         size = source.stat().st_size
         if size > 2 * 1024**3: raise StepError('Source exceeds 2 GB')
         write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size})

@@ -15,7 +15,7 @@ export function clipMusic(mode: MusicMode, vibe?: string | null) {
 }
 
 /** Shared worker used by every account that hasn't saved its own. */
-export const DEFAULT_CLOUD_WORKER_URL = "https://periodically-reproduced-owned-controller.trycloudflare.com";
+export const DEFAULT_CLOUD_WORKER_URL = "https://86-107-77-170.sslip.io";
 
 export function workerUrl(value: string) {
   const url = new URL(value.trim());
