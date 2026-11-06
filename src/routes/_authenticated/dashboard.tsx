@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Film, KeyRound, Trash2, Clapperboard, CheckCircle2 } from "lucide-react";
@@ -7,6 +8,8 @@ import { studioHead, stamp } from "@/lib/studio-rules";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AutoCutCard } from "@/components/cloud-cut-button";
+import { useServerFn } from "@tanstack/react-start";
+import { deleteStudioItems } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => studioHead("Auto Cut Studio", "Paste a YouTube link and get captioned 9:16 viral shorts, ready for your approval."),
@@ -31,11 +34,20 @@ function Dashboard() {
     return r.data;
   } });
 
-  async function removeSource(id: string) {
-    if (!window.confirm("Delete this video and all its clips?")) return;
-    const { error } = await supabase.from("studio_sources").delete().eq("id", id);
-    if (error) { toast.error("Couldn't delete this video"); return; }
+  const del = useServerFn(deleteStudioItems);
+  async function refresh() {
     await Promise.all(["studio-sources", "ready-clips", "studio-clip-count"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  }
+  async function removeSource(id: string) {
+    if (!window.confirm("Delete this video, all its clips and their saved files?")) return;
+    try { const r = await del({ data: { sourceId: id } }); toast.success(`Deleted video and ${r.clips} clips`); } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't delete this video"); }
+    await refresh();
+  }
+  async function removeClip(e: MouseEvent, id: string) {
+    e.preventDefault(); e.stopPropagation();
+    if (!window.confirm("Delete this clip and its saved file?")) return;
+    try { await del({ data: { clipIds: [id] } }); toast.success("Clip deleted"); } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't delete this clip"); }
+    await refresh();
   }
 
   return <div className="max-w-5xl">
@@ -59,7 +71,8 @@ function Dashboard() {
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
       {clips.map((c) => {
         const verdict = (c.viral_review as { verdict?: string } | null)?.verdict;
-        return <Link key={c.id} to="/clips/$id" params={{ id: c.id }} className="group rounded-lg border border-border bg-card overflow-hidden hover:border-primary/60 transition-colors">
+        return <Link key={c.id} to="/clips/$id" params={{ id: c.id }} className="group relative rounded-lg border border-border bg-card overflow-hidden hover:border-primary/60 transition-colors">
+          <Button variant="secondary" size="icon" aria-label="Delete clip" title="Delete clip" onClick={(e) => removeClip(e, c.id)} className="absolute top-2 right-2 z-10 h-8 w-8 opacity-90"><Trash2 className="h-4 w-4" /></Button>
           <div className="aspect-[9/16] bg-secondary">
             {c.url ? <video src={`${c.url}#t=0.5`} preload="metadata" muted playsInline className="h-full w-full object-cover" /> : <Film className="h-8 w-8 m-auto mt-20 text-muted-foreground" />}
           </div>

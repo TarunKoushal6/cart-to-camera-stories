@@ -180,4 +180,24 @@ export const reviewClip=createServerFn({method:"POST"}).middleware([requireSupab
   const update=await query.select("id").maybeSingle();
   if(update.error||!update.data)throw new Error("Clip changed during review. Run a fresh review.");
   return review;
+});// Deletes owned clips (or a whole source video) plus their saved MP4s in Storage.
+export const deleteStudioItems=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator(d=>z.object({sourceId:z.string().uuid().optional(),clipIds:z.array(z.string().uuid()).max(200).optional()}).parse(d)).handler(async({data,context})=>{
+  // Ownership decided through RLS-scoped reads first.
+  let q=context.supabase.from("studio_clips").select("id,video_path");
+  if(data.sourceId) q=q.eq("source_id",data.sourceId); else if(data.clipIds?.length) q=q.in("id",data.clipIds); else throw new Error("Nothing to delete.");
+  const {data:clips,error}=await q; if(error) throw new Error("Couldn't load clips.");
+  if(data.sourceId){ const {data:s}=await context.supabase.from("studio_sources").select("id").eq("id",data.sourceId).maybeSingle(); if(!s) throw new Error("Video not found."); }
+  const {supabaseAdmin}=await import("@/integrations/supabase/client.server");
+  const ids=(clips||[]).map(c=>c.id), paths=(clips||[]).map(c=>c.video_path).filter((p):p is string=>!!p);
+  if(ids.length){
+    await supabaseAdmin.from("studio_posts").delete().in("clip_id",ids).eq("user_id",context.userId);
+    await supabaseAdmin.from("youtube_posts").delete().in("clip_id",ids).eq("user_id",context.userId);
+    const {error:e}=await supabaseAdmin.from("studio_clips").delete().in("id",ids).eq("user_id",context.userId); if(e) throw new Error("Couldn't delete clips.");
+  }
+  for(let i=0;i<paths.length;i+=100) await supabaseAdmin.storage.from("videos").remove(paths.slice(i,i+100));
+  if(data.sourceId){
+    await supabaseAdmin.from("studio_cloud_jobs").delete().eq("source_id",data.sourceId).eq("user_id",context.userId);
+    const {error:e}=await supabaseAdmin.from("studio_sources").delete().eq("id",data.sourceId).eq("user_id",context.userId); if(e) throw new Error("Couldn't delete the video.");
+  }
+  return {clips:ids.length,files:paths.length};
 });

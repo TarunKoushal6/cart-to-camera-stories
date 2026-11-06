@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt } from "./studio-crypto.server";
 import { metaErrorMessage } from "./meta-error";
 type Post = Database["public"]["Tables"]["studio_posts"]["Row"];
-type GraphResult = { id?: string; name?: string; video_id?: string; status_code?: string; status?: { processing_phase?: { status?: string }; publishing_phase?: { status?: string } }; like_count?: number; comments_count?: number; likes?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } }; data?: { name: string; values?: { value: number }[] }[] };
+type GraphResult = { id?: string; name?: string; video_id?: string; status_code?: string; status?: { uploading_phase?: { status?: string }; processing_phase?: { status?: string }; publishing_phase?: { status?: string } }; like_count?: number; comments_count?: number; likes?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } }; data?: { name: string; values?: { value: number }[] }[] };
 async function graph(base: string, path: string, token: string, params?: Record<string,string>) {
   const url = new URL(`${base}/${path}`);
   const headers = { Authorization: `Bearer ${token}` };
@@ -65,11 +65,16 @@ export async function advanceStudioPost(admin: SupabaseClient<Database>, post: P
       if (!p.id) throw new Error("Instagram returned no published media ID.");
       await admin.from("studio_posts").update({status:"published",media_id:p.id,error:null}).eq("id",post.id);
     } else {
+      // Facebook Reels: processing only starts after "finish", so wait for the upload phase, then finish.
       const s = await graph(a.base,`${post.container_id}?fields=status`,a.token);
-      const phase = s.status?.processing_phase?.status;
-      if (phase === "error") throw new Error("Facebook could not process this clip.");
-      if (phase !== "complete") return "processing";
-      await graph(a.base,`${a.id}/video_reels`,a.token,{upload_phase:"finish",video_id:post.container_id,video_state:"PUBLISHED",description:post.caption});
+      const st = s.status;
+      if ([st?.uploading_phase?.status, st?.processing_phase?.status, st?.publishing_phase?.status].includes("error")) throw new Error("Facebook could not process this clip.");
+      if (!post.media_id) {
+        if (st?.uploading_phase?.status !== "complete") return "processing";
+        await graph(a.base,`${a.id}/video_reels`,a.token,{upload_phase:"finish",video_id:post.container_id,video_state:"PUBLISHED",description:post.caption});
+        await admin.from("studio_posts").update({media_id:post.container_id,error:null}).eq("id",post.id);
+      }
+      if (st?.publishing_phase?.status !== "complete" && st?.processing_phase?.status !== "complete") return "processing";
       await admin.from("studio_posts").update({status:"published",media_id:post.container_id,error:null}).eq("id",post.id);
     }
     return "published";
