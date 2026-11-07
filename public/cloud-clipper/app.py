@@ -388,7 +388,7 @@ def parse_subtitles(text):
     for c in cues:  # drop exact duplicates produced by overlapping cues
         if out and abs(out[-1]['start'] - c['start']) < 0.01 and out[-1]['text'] == c['text']: continue
         out.append(c)
-    return out
+    return normalized_caption_words(out)
 
 def pick_subtitle(files):
     """Prefer original-language captions (*-orig, never auto-translated), then YOUTUBE_SUB_LANGS order.
@@ -548,6 +548,40 @@ def font_word(text):
     # Hindi words switch to the Devanagari font; Latin words keep the heavy display font.
     return '{\\fn%s}%s{\\fn%s}' % (CAPTION_FONT_DEVANAGARI, text, CAPTION_FONT) if DEVANAGARI.search(text) else text
 
+def normalized_caption_words(cues):
+    """One speech timeline: collapse overlapping repeats, preserve sequential repeated words."""
+    import math
+    words = []
+    for cue in cues:
+        start, end = cue['start'], cue['end']
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        parts = [w for w in (caption_word(x) for x in cue['text'].split()) if w]
+        for i, text in enumerate(parts):
+            step = (end - start) / len(parts)
+            words.append({'start': start + i * step, 'end': start + (i + 1) * step, 'text': text})
+    words.sort(key=lambda w: (w['start'], w['end']))
+    merged = []
+    for word in words:
+        duplicate = None
+        for previous in reversed(merged):
+            if word['start'] - previous['start'] > 10:
+                break
+            if previous['text'] == word['text'] and previous['end'] > word['start'] and previous['start'] < word['end']:
+                duplicate = previous
+                break
+        if duplicate is not None:
+            duplicate['end'] = max(duplicate['end'], word['end'])
+        else:
+            merged.append(dict(word))
+    out = []
+    for i, word in enumerate(merged):
+        next_start = merged[i + 1]['start'] if i + 1 < len(merged) else word['end']
+        word = {**word, 'start': max(0, word['start']), 'end': min(word['end'], next_start)}
+        if word['end'] - word['start'] >= 0.01:
+            out.append(word)
+    return out
+
 def caption_groups(words):
     groups, cur = [], []
     for w in words:
@@ -564,7 +598,7 @@ def caption_groups(words):
 
 def caption_lines(cues, start, end):
     words = []
-    for c in cues:
+    for c in normalized_caption_words(cues):
         if c['end'] > start and c['start'] < end:
             # Sentence-level cues (untimed subtitles) are split evenly so groups stay 3-4 words.
             parts = [t for t in (caption_word(x) for x in c['text'].split()) if t]
@@ -583,7 +617,7 @@ def caption_lines(cues, start, end):
             a = w['start']; b = group[i + 1]['start'] if i + 1 < len(group) else group_end
             if b - a < 0.01:
                 continue
-            parts = [('{\\c%s\\fscx112\\fscy112}%s{\\c%s\\fscx100\\fscy100}' % (accent, font_word(x['text']), CAPTION_WHITE)) if j == i else font_word(x['text']) for j, x in enumerate(group)]
+            parts = [('{\\c%s}%s{\\c%s}' % (accent, font_word(x['text']), CAPTION_WHITE)) if j == i else font_word(x['text']) for j, x in enumerate(group)]
             lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{" ".join(parts)}')
     return lines
 

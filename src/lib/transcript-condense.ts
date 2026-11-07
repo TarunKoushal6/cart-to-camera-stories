@@ -48,12 +48,12 @@ export function windowScore(phrases: Phrase[]) {
 }
 
 /**
- * Condenses a transcript for moment selection: removes filler, scores ~30s windows by energy,
+ * Condenses a transcript for moment selection: removes filler, scores ~60s windows by energy,
  * and keeps only the strongest windows (spread across the whole video) in chronological order.
  * Short transcripts are only cleaned, never filtered.
  */
 export function condenseTranscript(cues: Cue[], opts: { windowSeconds?: number; keepRatio?: number; minWords?: number; buckets?: number } = {}): CondenseResult {
-  const windowSeconds = opts.windowSeconds ?? 30, keepRatio = opts.keepRatio ?? 0.2, minWords = opts.minWords ?? 3000, buckets = opts.buckets ?? 12;
+  const windowSeconds = opts.windowSeconds ?? 60, keepRatio = opts.keepRatio ?? 0.2, minWords = opts.minWords ?? 3000, buckets = opts.buckets ?? 12;
   const phrases = toPhrases(cues);
   const originalChars = phrases.reduce((n, p) => n + p.text.length + 14, 0);
   const cleaned = phrases.map(p => ({ ...p, text: stripFiller(p.text) })).filter(p => p.text.length > 1);

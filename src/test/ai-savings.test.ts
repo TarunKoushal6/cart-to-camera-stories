@@ -34,6 +34,11 @@ describe("transcript condensing for AI moment selection", () => {
     expect(r.text).toBe("[00:00] so this works.");
   });
 
+  it("provides a full minute of context for longer complete thoughts", () => {
+    const r = condenseTranscript(Array.from({ length: 240 }, (_, start) => ({ start, end: start + 1, text: "secret" })), { minWords: 1, buckets: 1 });
+    expect(r.kept.some(k => k.end - k.start >= 60)).toBe(true);
+  });
+
   it("removes filler words and stutters", () => {
     expect(stripFiller("um the the truth is, you know, simple")).toBe("the truth is, simple");
   });

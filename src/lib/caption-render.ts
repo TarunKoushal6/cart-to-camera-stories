@@ -1,4 +1,5 @@
 import type { Cue } from "./studio-rules";
+import { captionTimeline } from "./caption-timeline";
 import wasm from "@/assets/ffmpeg-core.wasm.asset.json";
 
 export type CaptionStyle = "karaoke" | "bold" | "clean";
@@ -27,7 +28,7 @@ export function captionGroups(words:Word[]):Word[][]{
 export function makeAss(cues:Cue[],style:CaptionStyle) {
   const header=`[Script Info]\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\nWrapStyle: 0\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Barlow,${style==="clean"?42:48},${WHITE},${WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,2,50,50,380,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
   const words:Word[]=[];
-  for(const cue of cues){
+  for(const cue of captionTimeline(cues)){
     const parts=cue.text.split(/\s+/).map(clean).filter(Boolean);
     const span=(cue.end-cue.start)/Math.max(parts.length,1);
     parts.forEach((t,k)=>words.push({start:cue.start+k*span,end:cue.start+(k+1)*span,text:style==="clean"?t:t.toUpperCase()}));
@@ -42,7 +43,7 @@ export function makeAss(cues:Cue[],style:CaptionStyle) {
     group.forEach((w,i)=>{
       const end=group[i+1]?.start??groupEnd;
       if(end-w.start<0.01)return;
-      const text=group.map((x,j)=>j===i?`{\\c${accent}\\fscx112\\fscy112}${x.text}{\\c${WHITE}\\fscx100\\fscy100}`:x.text).join(" ");
+      const text=group.map((x,j)=>j===i?`{\\c${accent}}${x.text}{\\c${WHITE}}`:x.text).join(" ");
       rows.push(`Dialogue: 0,${assTime(w.start)},${assTime(end)},Default,,0,0,0,,${text}`);
     });
   });

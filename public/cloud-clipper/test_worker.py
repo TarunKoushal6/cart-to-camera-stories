@@ -16,6 +16,35 @@ import app
 import openshorts_adapter
 
 class WorkerTests(unittest.TestCase):
+    def test_overlap_dedup_preserves_sequential_repeats(self):
+        cues = app.normalized_caption_words([
+            {'start': 0, 'end': 0.7, 'text': 'I'},
+            {'start': 0.6, 'end': 1.1, 'text': 'I'},
+            {'start': 0.7, 'end': 1.3, 'text': 'SEE'},
+            {'start': 1.1, 'end': 1.5, 'text': 'SEE'},
+            {'start': 1.5, 'end': 2, 'text': 'SEE'},
+        ])
+        self.assertEqual([w['text'] for w in cues], ['I', 'SEE', 'SEE'])
+        self.assertTrue(all(a['end'] <= b['start'] for a, b in zip(cues, cues[1:])))
+
+    def test_real_one_minute_vertical_render(self):
+        job, clip = uuid.uuid4(), uuid.uuid4()
+        directory = app.folder(job); directory.mkdir()
+        source = directory / 'source.mp4'
+        app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=size=320x180:rate=5', '-t', '60', '-c:v', 'libx264', '-threads', '2', str(source)])
+        app.write(job, status='analyzed', source=str(source), duration=60, cues=[{'start':0, 'end':60, 'text':'One minute complete thought'}])
+        target = app.Target(id=clip, path=f'owner/clips/{clip}/video.mp4', segment=app.Segment(title='Minute', start=0, end=60, score=80, reason='Complete'), upload_url='https://test.supabase.co/storage/v1/object/upload/sign/videos/test.mp4?token=test')
+        captured = directory / 'uploaded.mp4'
+        def upload(url, data, **kwargs):
+            captured.write_bytes(data.read())
+            return types.SimpleNamespace(status_code=200)
+        with patch.object(app.requests, 'put', side_effect=upload): app.render(job, [target])
+        self.assertEqual(app.read(job)['status'], 'complete')
+        import json
+        video = next(s for s in json.loads(app.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(captured)]))['streams'] if s['codec_type'] == 'video')
+        self.assertEqual((video['width'], video['height']), (720,1280))
+        self.assertEqual(round(float(video['duration'])), 60)
+
     def test_real_vertical_render_and_exact_upload(self):
         job, clip = uuid.uuid4(), uuid.uuid4()
         directory = app.folder(job)

@@ -1,3 +1,5 @@
+- [x] Verified 5 current saved clips (23/32/29/32/28s), one 720×1280 MP4 and overlapping repeated words; fixed caption timelines and verified a real 60-second local worker render.
+- [ ] Apply cleaned captions to existing saved MP4s — blocked on deploying the updated app.py to the user's VPS and re-rendering from original sources; stored burned-in captions cannot be changed in place.
 - [x] Stop button for auto cut runs (app + worker cancel); stuck old runs stopped; signed-in Stop click verified.
 - [x] Per-account isolation: database rules already separate accounts; fixed the browser keeping the previous account's videos/clips after switching accounts.
 - [ ] Test run of gTKS8SAwUzE — blocked: worker queue full (HTTP 429) from old waiting runs; needs publish + run.bat to load the new app.py.
