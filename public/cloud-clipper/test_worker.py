@@ -70,7 +70,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(app.read(job)['status'], 'complete')
         import json
         video = next(s for s in json.loads(app.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(captured)]))['streams'] if s['codec_type'] == 'video')
-        self.assertEqual((video['width'], video['height']), (720,1280))
+        self.assertEqual((video['width'], video['height']), (1080,1920))
         self.assertEqual(round(float(video['duration'])), 60)
 
     def test_real_vertical_render_and_exact_upload(self):
@@ -92,7 +92,7 @@ class WorkerTests(unittest.TestCase):
         import json
         probe=json.loads(app.run(['ffprobe','-v','error','-show_streams','-of','json',str(captured)]))
         video=next(s for s in probe['streams'] if s['codec_type']=='video')
-        self.assertEqual((video['width'],video['height']),(720,1280))
+        self.assertEqual((video['width'],video['height']),(1080,1920))
         self.assertEqual(round(float(video['duration'])),20)
 
     def test_openshorts_bridge_uses_upstream_functions_and_word_cues(self):

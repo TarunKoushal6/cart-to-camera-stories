@@ -64,7 +64,7 @@ export async function renderClip(file:File,start:number,end:number,cues:Cue[],st
     await ffmpeg.writeFile("input.mp4",await fetchFile(file));
     await ffmpeg.writeFile("captions.ass",new TextEncoder().encode(makeAss(cues,style)));
     const x=framing==="left"?"0":framing==="right"?"iw-ow":"(iw-ow)/2";
-    const filter=`scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280:${x}:(ih-oh)/2,setsar=1,ass=captions.ass:fontsdir=fonts`;
+    const filter=`scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:${x}:(ih-oh)/2,setsar=1,ass=captions.ass:fontsdir=fonts`;
     const args=["-ss",String(start),"-i","input.mp4"];
     if(voiceover){await ffmpeg.writeFile("voiceover",await fetchFile(voiceover));args.push("-i","voiceover");}
     args.push("-t",String(end-start),"-vf",filter,"-c:v","libx264","-preset","ultrafast","-crf","23");

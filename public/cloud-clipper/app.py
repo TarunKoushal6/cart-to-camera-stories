@@ -170,7 +170,7 @@ def explain_download(output):
     if 'video unavailable' in s or 'has been removed' in s:
         return 'This video is unavailable or removed.'
     if 'larger than max-filesize' in s:
-        return 'Video is larger than the 2 GB limit at 720p.'
+        return 'Video is larger than the 4 GB limit at 1080p.'
     if 'does not pass filter' in s:
         return 'Video is longer than the 4 hour limit.'
     if 'requested format is not available' in s or 'only images are available' in s:
@@ -283,8 +283,8 @@ def ytdlp_attempt(job, url, d, cookies):
     # Only request Deno when it exists; older/standalone installs reject the flag otherwise.
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
-            '--max-filesize', '2G', '--match-filter', 'duration <= 14400', *extra,
-            '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', '--merge-output-format', 'mp4',
+            '--max-filesize', '4G', '--match-filter', 'duration <= 14400', *extra,
+            '-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', '--merge-output-format', 'mp4',
             '-o', str(d / 'source.%(ext)s'), url]
     try:
         p = track(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace'))
@@ -463,7 +463,7 @@ def download(job, url):
             source = ytdlp(job, url, d)
         if source is None: raise StepError('No video downloaded')
         size = source.stat().st_size
-        if size > 2 * 1024**3: raise StepError('Source exceeds 2 GB')
+        if size > 4 * 1024**3: raise StepError('Source exceeds 4 GB')
         write(job, stage='preparing_audio', progress={'downloaded': size, 'total': size})
         probe = json.loads(run(['ffprobe', '-v', 'error', '-show_format', '-of', 'json', str(source)], failure='FFprobe could not read the downloaded video'))
         duration = float(probe['format']['duration'])
@@ -735,7 +735,7 @@ def inspect_output(output, ass, expected, music):
         h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
     overlaps = sum(event_time(a[2]) > event_time(b[1]) + 0.01 for a, b in zip(lines, lines[1:]))
     warnings = []
-    if (video['width'], video['height']) != (720, 1280): warnings.append('Output is not 720x1280 vertical')
+    if (video['width'], video['height']) != (1080, 1920): warnings.append('Output is not 1080x1920 vertical')
     if abs(duration - expected) > 0.5: warnings.append('Output length differs from selected moment')
     if not audio: warnings.append('No audio stream; intentional silent content needs owner review')
     if black > max(1, duration * 0.15): warnings.append('Extended near-black scenes detected; may be intentional')
@@ -772,10 +772,10 @@ def _render(job, targets, music=None):
                 reframe_source(cut, vertical)
                 render_source, offset = vertical, 0
             # Relative name + cwd: Windows paths (C:\\...) break FFmpeg filter parsing at the drive colon.
-            filters = f'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,ass={ass.name}'
+            filters = f'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,ass={ass.name}'
             length = s.end - s.start
             vibe = music.clips.get(str(t.id)) if music else None
-            encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+            encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-maxrate', '5500k', '-bufsize', '11000k', '-pix_fmt', 'yuv420p',
                       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)]
             rendered = False
             if vibe:
