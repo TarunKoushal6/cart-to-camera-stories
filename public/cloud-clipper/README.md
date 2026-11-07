@@ -69,6 +69,16 @@ Each clip can get a quiet background music bed that matches its mood (energetic,
 
 ## Approval and next-day scheduling
 
+## Final quality checks and topic discovery
+
+Discovery first reads uniformly sampled chronological topic maps (including quiet topics), then rereads bounded original speech around promising windows to choose complete 20–60s thoughts. It does not force a minimum clip count. More coverage adds AI calls, but never sends the raw multi-hour transcript in one request.
+
+After captions and music are finished, FFprobe measures the final MP4, FFmpeg decodes every frame, checks near-black/silent intervals and checks generated caption-event overlaps. Five small final-output JPEG samples are retained per clip. The app's last AI review inspects these actual samples with the exact speech and metrics. `GET /jobs/{job}/clips/{clip}/quality` requires WORKER_TOKEN and validates that this clip completed in that job. Samples are fetched only during final review, not every progress poll. Existing workers/absent evidence are labelled Unverified. The final clip page shows measured warnings and visual feedback; owner approval is still required and review is advisory.
+
+This is sampled visual inspection, not continuous full-video understanding: lip sync, every action/frame, audio intelligibility and musical taste are not verified by images or silence metrics. Black scenes/silence can be intentional in non-podcast niches. Existing center framing is unchanged. A personal model must accept image input for visual review; a rejecting text-only model produces an explicit review error, never a false visual pass. Retained sample JSON uses bounded storage in the job data folder; include it in your normal job cleanup.
+
+FFmpeg/libass is the existing lightweight open-source editor; no new heavyweight editor or vision model is required. PySceneDetect (https://github.com/Breakthrough/PySceneDetect) can help future cut-aware edits; auto-editor (https://github.com/WyattBlue/auto-editor) removes quiet sections but should not automatically remove meaningful pauses.
+
 Successful MP4s are stored privately under the owner's clip paths and AI-reviewed. Open the source's review list, select clips, choose Instagram or Facebook, then press Approve & schedule tomorrow. No post is queued without that explicit action. Existing queued clips are skipped on retry; approved but unscheduled clips remain selectable. Slots use your browser's local timezone, start tomorrow at 10:00 and normally run two hours apart; larger batches compress the spacing to keep every approved clip within tomorrow. Scheduling uses the day you approve, not the day you started processing. YouTube Shorts scheduling remains in the individual clip editor. Connect the intended social account first; live platform acceptance is not guaranteed by a worker render.
 
 ## Updating a running worker / troubleshooting downloads

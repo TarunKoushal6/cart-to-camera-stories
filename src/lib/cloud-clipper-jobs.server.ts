@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { cloudTargetSchema, workerStatusSchema, musicModeSchema, clipMusic, MUSIC_VOLUME } from "./cloud-clipper-rules";
+import { videoInspectionSchema } from "./video-quality-rules";
 
 const ACTIVE = ["transcribing", "analyzing", "rendering", "finalizing"];
 
@@ -84,7 +85,7 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const { data: source } = await context.supabase.from("studio_sources").select("transcript").eq("id", job.source_id).eq("user_id", context.userId).single();
         const { cueSchema } = await import("./studio-rules");
         const cues = z.array(cueSchema).parse(source?.transcript || []);
-        const { reviewWithKey } = await import("./studio-ai.server");
+        const { reviewRenderedWithKey } = await import("./studio-ai.server");
         const { viralReviewSchema } = await import("./clip-review-rules");
         const current = await context.supabase.from("studio_clips").select("id,video_path,viral_review").eq("source_id", job.source_id).eq("user_id", context.userId);
         if (current.error) throw new Error("Couldn't load staged clips.");
@@ -100,8 +101,11 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
           // Attaching the video first invalidates any stale review through the existing DB trigger.
           const attached = await context.supabase.from("studio_clips").update({ video_path: t.path, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).select("caption,voiceover,start_seconds,end_seconds").single();
           if (attached.error || !attached.data) throw new Error("Couldn't attach saved clip.");
-          const review = viralReviewSchema.parse(await withAi(ai, secret, c => reviewWithKey(c.provider, c.model, c.key, c.baseUrl,
-            t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, "", t.segment.end - t.segment.start)));
+          // Old workers are explicitly unverified, never presented as a successful video quality check.
+          const inspection = await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/clips/${t.id}/quality`)
+            .then(raw => videoInspectionSchema.parse(raw)).catch(() => null);
+          const review = viralReviewSchema.parse(await withAi(ai, secret, c => reviewRenderedWithKey(c.provider, c.model, c.key, c.baseUrl,
+            t.segment.title, cues.filter(c => c.end > t.segment.start && c.start < t.segment.end), attached.data.caption, t.segment.end - t.segment.start, inspection)));
           let saveReview = context.supabase.from("studio_clips").update({ viral_review: review, approved_at: null }).eq("id", t.id).eq("user_id", context.userId).eq("caption", attached.data.caption).eq("video_path", t.path).eq("start_seconds", attached.data.start_seconds).eq("end_seconds", attached.data.end_seconds);
           saveReview = attached.data.voiceover === null ? saveReview.is("voiceover", null) : saveReview.eq("voiceover", attached.data.voiceover);
           const saved = await saveReview.select("id").maybeSingle();

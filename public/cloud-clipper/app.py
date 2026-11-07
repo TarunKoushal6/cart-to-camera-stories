@@ -715,6 +715,45 @@ def render(job, targets, music=None):
     finally:
         CURRENT.job = None
 
+def inspect_output(output, ass, expected, music):
+    """Runs after captions/music. Full decode plus measured warnings and bounded final-output samples."""
+    import base64
+    probe = json.loads(run(['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(output)]))
+    video = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+    duration = float(probe['format']['duration'])
+    audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
+    run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(output), '-map', '0:v', '-map', '0:a?', '-f', 'null', '-'], failure='Final MP4 decode check failed')
+    args = ['ffmpeg', '-nostats', '-i', str(output), '-vf', 'blackdetect=d=0.5:pix_th=0.10']
+    if audio: args += ['-af', 'silencedetect=noise=-40dB:d=0.7']
+    diagnostic = subprocess.run([*args, '-f', 'null', '-'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+    if diagnostic.returncode: raise StepError('Final video measurement failed')
+    report = diagnostic.stderr.decode(errors='replace')
+    black = sum(float(x) for x in re.findall(r'black_duration:([\d.]+)', report))
+    silence = sum(float(x) for x in re.findall(r'silence_duration: ([\d.]+)', report))
+    lines = [l.split(',', 3) for l in ass.read_text(encoding='utf-8').splitlines() if l.startswith('Dialogue:')]
+    def event_time(t):
+        h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
+    overlaps = sum(event_time(a[2]) > event_time(b[1]) + 0.01 for a, b in zip(lines, lines[1:]))
+    warnings = []
+    if (video['width'], video['height']) != (720, 1280): warnings.append('Output is not 720x1280 vertical')
+    if abs(duration - expected) > 0.5: warnings.append('Output length differs from selected moment')
+    if not audio: warnings.append('No audio stream; intentional silent content needs owner review')
+    if black > max(1, duration * 0.15): warnings.append('Extended near-black scenes detected; may be intentional')
+    if silence > duration * 0.35: warnings.append('Extended silence detected; may be intentional')
+    if not lines: warnings.append('No burned-caption events generated')
+    if overlaps: warnings.append('Overlapping caption events detected')
+    frames = []
+    for fraction in (0.04, 0.25, 0.5, 0.75, 0.96):
+        second = round(duration * fraction, 2)
+        p = track(subprocess.Popen(['ffmpeg', '-v', 'error', '-ss', str(second), '-i', str(output), '-frames:v', '1', '-vf', 'scale=360:640', '-q:v', '5', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-'], stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+        try: data, err = p.communicate(timeout=30)
+        finally: untrack(p)
+        if p.returncode or not data or len(data) > 120000: raise StepError('Could not extract bounded final video samples')
+        frames.append({'second': second, 'jpeg': base64.b64encode(data).decode()})
+    return {'metrics': {'width': video['width'], 'height': video['height'], 'duration': duration, 'decoded': True,
+            'has_audio': audio, 'black_seconds': round(black, 3), 'silent_seconds': round(silence, 3),
+            'caption_events': len(lines), 'caption_overlaps': overlaps, 'music': music, 'warnings': warnings}, 'frames': frames}
+
 def _render(job, targets, music=None):
         state = read(job); source = Path(state['source']); d = folder(job); completed = []
         for t in targets:
@@ -755,6 +794,9 @@ def _render(job, targets, music=None):
                 run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-t', str(length),
                      '-vf', filters, *encode], cwd=str(d))
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
+            # Final media check is last, AFTER all visual/audio edits, before uploading the unchanged result.
+            inspection = inspect_output(output, ass, length, vibe if rendered else None)
+            (d / f'{t.id}-quality.json').write_text(json.dumps(inspection))
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))
             if u.scheme != 'https' or not u.hostname or not u.hostname.endswith('.supabase.co') or '/storage/v1/object/upload/sign/' not in u.path:
@@ -802,6 +844,16 @@ def start(body: Intake):
 def status(job: uuid.UUID):
     s = read(job)
     return {k: s[k] for k in ['status','stage','progress','duration','cues','completed','error'] if k in s}
+
+@app.get('/jobs/{job}/clips/{clip}/quality', dependencies=[Depends(authorized)])
+def clip_quality(job: uuid.UUID, clip: uuid.UUID):
+    # Rendered-frame evidence is private; never expose it on an unprotected worker.
+    if not TOKEN: raise HTTPException(403, 'Set WORKER_TOKEN to enable private final video inspection')
+    s = read(job)
+    if str(clip) not in s.get('completed', []): raise HTTPException(404, 'Completed clip not found')
+    p = folder(job) / f'{clip}-quality.json'
+    if not p.exists(): raise HTTPException(404, 'Final inspection unavailable; update worker')
+    return json.loads(p.read_text())
 
 @app.post('/jobs/{job}/render', dependencies=[Depends(authorized)])
 def begin_render(job: uuid.UUID, body: Render):

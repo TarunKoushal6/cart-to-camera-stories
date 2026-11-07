@@ -1,3 +1,7 @@
+- [x] Uniform topic discovery, exact original-context refinement and semantic dedup: real 175-minute transcript returned 47 candidates (20–55s), not completed MP4s. Existing framing/captions/music retained.
+- [x] Final actual-output checks after captions/music: full decode, dimensions, black/silence, caption overlap metrics and five authenticated samples; real saved MP4 inspections and visual AI checks passed, limitations explicit. 107 app tests and 7 worker tests pass.
+- [x] Measured new selection/visual request costs; lightweight FFmpeg retained, PySceneDetect/auto-editor documented; cash conversion unknown.
+- [ ] Deploy and verify new end-to-end topic/refinement/final-video QA on VPS — requires publishing and worker update; do not change or delete existing reels.
 - [x] Verified 5 current saved clips (23/32/29/32/28s), one 720×1280 MP4 and overlapping repeated words; fixed caption timelines and verified a real 60-second local worker render.
 - [x] Topic-led 20–60s selection: eight bounded reads with setup/payoff context, evidence filtering and overlap dedup; saved 170-minute transcript returned eight candidates of 23–57s, ~71% smaller input. Candidates only, not newly rendered clips; old transcript has scrambled/overlapping speech, limiting quality.
 - [x] Automatic per-reel music: explicit tone mapping, no arbitrary inspiring fallback, 10% normalized bed with stronger ducking; existing captions retained; real local music mix and 20s/60s renders passed.

@@ -27,7 +27,7 @@ const db = {from:query,rpc:async()=>({data:state.leased,error:null}),storage:{fr
 vi.mock("@/integrations/supabase/client.server",()=>({supabaseAdmin:db}));
 vi.mock("@/lib/studio-crypto.server",()=>({decrypt:async()=>"key"}));
 vi.mock("@/lib/cloud-clipper.server",()=>({callWorker:async()=>worker.reply,resolveWorker:async()=>({url:"https://worker.example.com",token:""})}));
-vi.mock("@/lib/studio-ai.server",()=>({reviewWithKey:async()=>critique}));
+vi.mock("@/lib/studio-ai.server",()=>({reviewRenderedWithKey:async()=>({...critique,video_quality:{status:"Unverified",frames_checked:0,visual_notes:"No samples",limitations:"Transcript only"}})}));
 beforeEach(()=>{ state.status="finalizing"; state.reviewed=false; state.leased=true; state.updates=[]; worker.reply={status:"complete",completed:[id],error:undefined}; vi.stubEnv("STUDIO_ENCRYPTION_KEY","test"); });
 it("resumes interrupted finalization, attaches the exact MP4 and reviews without approving or posting",async()=>{
   const {advanceCloudCut}=await import("@/lib/cloud-clipper-jobs.server");

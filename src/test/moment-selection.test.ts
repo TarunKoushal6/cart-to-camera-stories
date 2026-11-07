@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { evidencedMoments, mergeMoments, momentBatches } from "@/lib/moment-selection";
+import { evidencedMoments, mergeMoments, momentBatches, topicMap, topicContexts } from "@/lib/moment-selection";
 import { withinKept } from "@/lib/transcript-condense";
 import { parseAiSegments } from "@/lib/studio-rules";
 import { MUSIC_VOLUME } from "@/lib/cloud-clipper-rules";
 
 const moment = (start: number, length: number, score = 80) => ({ start, end: start + length, score, title: `Topic ${start}`, reason: "Complete thought", vibe: "chill" as const });
 describe("topic-led moment selection", () => {
+  it("keeps quiet hook-free topics represented throughout the discovery map", () => {
+    const cues = Array.from({ length: 240 }, (_, i) => ({ start: i * 30, end: i * 30 + 20, text: `Quiet topic number ${i} explains an ordinary observation` }));
+    const map = topicMap(cues, 0, 7200);
+    expect(map).toContain("Quiet topic number 0");
+    expect(map).toContain("Quiet topic number 120");
+    expect(map).toContain("Quiet topic number 239");
+  });
+  it("rereads original setup and payoff with 20 second context and rejects out-of-batch topics", () => {
+    const cues = [{ start: 80, end: 90, text: "Question setup" }, { start: 100, end: 140, text: "Complete answer" }, { start: 140, end: 160, text: "Payoff" }];
+    const contexts = topicContexts(cues, [{ start: 100, end: 140 }, { start: 900, end: 1000 }], 0, 900);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.text).toContain("Question setup");
+    expect(contexts[0]?.text).toContain("Payoff");
+    expect(evidencedMoments([moment(90, 60), moment(140, 40)], contexts[0] ?? { start: 0, end: 0, kept: [], text: "", filtered: false, originalChars: 0, condensedChars: 0 })).toEqual([moment(90, 60)]);
+  });
   it("retains exact 20, 23, 47 and 60 second topic lengths without padding", () => {
     const moments = [moment(0, 20), moment(100, 23), moment(200, 47), moment(300, 60)];
     expect(mergeMoments(moments).map(s => s.end - s.start)).toEqual([20, 23, 47, 60]);

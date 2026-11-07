@@ -147,6 +147,20 @@ function PublishStudio() {
       </div>
 
       <div className="space-y-8">
+        {critique.success && <section aria-label="Final quality check" className="space-y-3 border-b border-border pb-6">
+          <h2 className="font-display text-lg font-bold">Final quality check · {critique.data.video_quality?.status ?? "Unverified"}</h2>
+          <p className="text-sm">{critique.data.critique}</p>
+          {critique.data.video_quality && <>
+            <p className="text-sm">{critique.data.video_quality.visual_notes}</p>
+            {critique.data.video_quality.metrics && <p className="text-xs text-muted-foreground">
+              {critique.data.video_quality.metrics.width}×{critique.data.video_quality.metrics.height} · {Math.round(critique.data.video_quality.metrics.duration)}s · Decode {critique.data.video_quality.metrics.decoded ? "passed" : "failed"} · {critique.data.video_quality.frames_checked} frames inspected · {critique.data.video_quality.metrics.caption_overlaps} caption overlaps
+            </p>}
+            {critique.data.video_quality.metrics?.warnings.map(w => <p key={w} className="text-sm text-accent">{w}</p>)}
+            <p className="text-xs text-muted-foreground">{critique.data.video_quality.limitations}</p>
+          </>}
+          {!critique.data.video_quality && <p className="text-xs text-muted-foreground">Transcript-only review. Rendered video and audio quality were not inspected.</p>}
+          <ul className="list-disc pl-5 text-sm space-y-1">{critique.data.feedback.map(f => <li key={f}>{f}</li>)}</ul>
+        </section>}
         <section className="space-y-4">
           <label className="text-sm block">Caption<Input aria-label="Caption" className="mt-2" value={text.caption} maxLength={150} onChange={e => setText({ ...text, caption: e.target.value })} placeholder="Hook line viewers see first" /></label>
           <label className="text-sm block">Description<Textarea aria-label="Description" className="mt-2" rows={4} maxLength={1800} value={text.description} onChange={e => setText({ ...text, description: e.target.value })} /></label>

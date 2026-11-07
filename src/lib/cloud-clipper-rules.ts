@@ -108,7 +108,7 @@ export function cloudJobProgress(status: string, live: LiveCloudProgress): { ste
   if (status === "ready") return { step: CLOUD_STEPS.length, label: "Ready for your approval", detail: null, percent: 100 };
   if (status === "failed") return { step: -1, label: "Cloud clipping failed", detail: null, percent: null };
   if (status === "analyzing") return { step: 2, label: CLOUD_STEPS[2], detail: "Your AI is reading the transcript for viral moments", percent: null };
-  if (status === "finalizing") return { step: 3, label: "Reviewing saved clips", detail: "Rating each clip before it's ready", percent: null };
+  if (status === "finalizing") return { step: 3, label: "Final video quality check", detail: "Inspecting final frames and media checks after captions and music", percent: null };
   if (status === "rendering") {
     const total = live?.total ?? 0, done = Math.min(live?.rendered ?? 0, total);
     return { step: 3, label: CLOUD_STEPS[3], detail: total ? `${done} of ${total} clips saved` : null, percent: total ? (done / total) * 100 : null };

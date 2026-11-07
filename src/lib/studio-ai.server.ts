@@ -1,9 +1,10 @@
 import { parseAiSegments, providerBaseUrl, compactTranscript, transcriptEnd, VIBES, type Provider, type Cue } from "./studio-rules";
-import { momentBatches, mergeMoments, evidencedMoments, type Moment } from "./moment-selection";
+import { momentBatches, mergeMoments, evidencedMoments, topicMap, topicContexts, type Moment } from "./moment-selection";
 import { generateChatCompletion, GatewayError } from "@lovable.dev/ai-gateway";
 import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 import { AiRequestError } from "./studio-ai-default.server";
+import type { VideoInspection } from "./video-quality-rules";
 
 /** OpenAI-style request body. Custom gateways often reject strict JSON mode, so they rely on the prompt + tolerant parsing. */
 export function chatBody(provider: Provider, model: string, prompt: string, maxTokens: number) {
@@ -40,27 +41,52 @@ export async function fetchModels(provider: Provider, key: string, baseUrl?: str
 }
 
 export async function analyzeWithKey(provider: Provider, model: string, key: string, cues: Cue[], baseUrl?: string | null, structure?: {title:string;duration:number;outline:string}) {
-  const batches = cues.length ? momentBatches(cues) : [{ text: "", start: 0, end: structure?.duration ?? 0, kept: [], filtered: false, originalChars: 0, condensedChars: 0 }];
+  let batches = cues.length ? momentBatches(cues) : [{ text: "", start: 0, end: structure?.duration ?? 0, kept: [], filtered: false, originalChars: 0, condensedChars: 0 }];
+  if (cues.length) {
+    const exact: typeof batches = [];
+    for (let i = 0; i < batches.length; i += 2) {
+      const found = await Promise.all(batches.slice(i, i + 2).map(async batch => {
+        const map = topicMap(cues, batch.start, batch.end);
+        const reply = await requestAnalysis(provider, model, key, baseUrl, `Map distinct topics and promising conversations throughout this chronological excerpt, including quiet insights, stories, practical advice and Hindi/Hinglish. These sampled lines omit speech: do NOT finalize cuts from them. Identify up to 24 promising focus windows, each at most 120 seconds, spread across all topics; not a quota. Skip sponsors and repeated points. Timestamps in the map are discovery hints. Return ONLY JSON {"topics":[{"start":0,"end":90}]} with absolute seconds, start within ${batch.start}–${batch.end}, or an empty list.\n${map}`);
+        const topics = z.object({ topics: z.array(z.object({ start: z.number(), end: z.number() })).max(24) }).parse(JSON.parse(reply.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")));
+        return topicContexts(cues, topics.topics, batch.start, batch.end);
+      }));
+      exact.push(...found.flat());
+    }
+    // Group bounded original contexts to avoid one AI call per candidate.
+    batches = [];
+    for (const context of exact) {
+      const last = batches.at(-1);
+      if (last && last.start === context.start && last.text.length + context.text.length < 18000) {
+        last.text += "\n…\n" + context.text; last.kept.push(...context.kept);
+      } else batches.push({ ...context, kept: [...context.kept] });
+    }
+  }
   const moments: Moment[] = [];
   // Two bounded calls at a time, not one overwhelming multi-hour prompt or an unbounded request fan-out.
   for (let i = 0; i < batches.length; i += 2) {
     const results = await Promise.all(batches.slice(i, i + 2).map(async batch => {
-      const prompt = `Analyze each distinct topic in this excerpt independently. Find every genuinely useful self-contained conversation, story, surprising fact, practical tip or compelling moment (maximum 15 in this excerpt, not a target). Do not stop after the first few or select only dramatic English hook words; quiet insights and Hindi/Hinglish topics count too. Each clip MUST be 20–60 seconds. Let the topic determine the exact length: keep its setup/question and complete answer/payoff, start and finish at natural thought boundaries. A complete 23s thought stays 23s; a 47s explanation stays 47s. Never pad, force 60s, or impose a typical length. Exclude sponsor reads, repetition and weak filler; no artificial quota. Do not invent words. Score potential 0–100, not a promise. Keep titles under 60 chars and reasons one short sentence. Choose music for THIS clip's actual topic/tone, not the video's general theme: chill for neutral advice/conversation, emotional for grief/vulnerability, dramatic for genuine danger/tension, inspiring for an explicit uplifting payoff, energetic for excitement/action, funny only for humor. Never use inspiring merely because the speaker is an athlete. Use none when mood is unclear or music would distract. Vibe must be ${VIBES.join("|")}|none. ${cues.length ? `Use absolute timestamps '[MM:SS]' or '[H:MM:SS]' as seconds. Start between ${batch.start} and ${batch.end}; both boundaries must lie within one shown block. Gaps marked … contain unseen speech; never bridge them. Each block ends with an explicit end timestamp. You have not heard audio or seen the footage; tone is transcript-based.` : "You have NOT watched or heard the video. Suggest only provisional windows using the title/duration/outline; every reason starts 'Structure-only candidate: ' and discloses unverified timing."} Return ONLY JSON {"segments":[{"title":"...","start":0,"end":23,"score":80,"reason":"...","vibe":"chill"}]} or {"segments":[]} if nothing qualifies. Transcript:\n${batch.text}\nStructure: ${JSON.stringify(structure || null)}`;
+      const prompt = `Analyze each distinct topic in this excerpt independently. Find every genuinely useful self-contained conversation, story, surprising fact, practical tip or compelling moment (maximum 15 in this excerpt, not a target). Do not stop after the first few or select only dramatic English hook words; quiet insights and Hindi/Hinglish topics count too. Each clip MUST be 20–60 seconds. Let the topic determine the exact length: keep its setup/question and complete answer/payoff, start and finish at natural thought boundaries. A complete 23s thought stays 23s; a 47s explanation stays 47s. Never pad, force 60s, or impose a typical length. Exclude sponsor reads, repetition and weak filler; no artificial quota. Do not invent words. Score potential 0–100, not a promise. Keep titles under 60 chars and reasons one short sentence. Choose music for THIS clip's actual topic/tone, not the video's general theme: chill for neutral advice/conversation, emotional for grief/vulnerability, dramatic for genuine danger/tension, inspiring for an explicit uplifting payoff, energetic for excitement/action, funny only for humor. Never use inspiring merely because the speaker is an athlete. Use none when mood is unclear or music would distract. Vibe must be ${VIBES.join("|")}|none. ${cues.length ? `The exact excerpt labels '[start–end s]' are absolute seconds; any '[MM:SS]' labels are minute stamps. Use absolute seconds in your answer. Start between ${batch.start} and ${batch.end}; both boundaries must lie within one shown block. Gaps marked … contain unseen speech; never bridge them. Do not extend beyond the final phrase end of the shown block. You have not heard audio or seen the footage; tone is transcript-based.` : "You have NOT watched or heard the video. Suggest only provisional windows using the title/duration/outline; every reason starts 'Structure-only candidate: ' and discloses unverified timing."} Return ONLY JSON {"segments":[{"title":"...","start":0,"end":23,"score":80,"reason":"...","vibe":"chill"}]} or {"segments":[]} if nothing qualifies. Transcript:\n${batch.text}\nStructure: ${JSON.stringify(structure || null)}`;
       const text = await requestAnalysis(provider, model, key, baseUrl, prompt);
       const parsed = parseAiSegments(text, cues.length ? transcriptEnd(cues) : structure?.duration ?? 0, true);
       return cues.length ? evidencedMoments(parsed, batch) : parsed;
     }));
     moments.push(...results.flat());
   }
-  const selected = mergeMoments(moments);
+  let selected = mergeMoments(moments);
+  if (selected.length > 1) {
+    const reply = await requestAnalysis(provider, model, key, baseUrl, `Remove only repeated takeaways from these discovered moments. Preserve distinct examples, arguments and practical tips even when their broad topic matches. Never impose a quota or choose a target count. Prefer the clearer standalone setup/payoff for true duplicates. Return ONLY JSON {"keep":[0,1]} listing original indices, ascending. Do not invent new moments.\n${JSON.stringify(selected.map((s, i) => ({ i, title: s.title, reason: s.reason, score: s.score })))}`);
+    const ids = z.object({ keep: z.array(z.number().int().nonnegative()).max(60) }).parse(JSON.parse(reply.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, ""))).keep;
+    selected = selected.filter((_, i) => ids.includes(i));
+  }
   if (!selected.length) throw new Error("No complete 20–60 second moments were found in the available transcript. Check transcript quality before retrying.");
   return selected;
 }
 
-async function requestAnalysis(provider: Provider, model: string, key: string, baseUrl: string | null | undefined, prompt: string) {
+async function requestAnalysis(provider: Provider, model: string, key: string, baseUrl: string | null | undefined, prompt: string, images: string[] = []) {
   if (model === "google/gemini-3.1-flash-lite" && baseUrl === "https://ai.gateway.lovable.dev/v1") {
     try {
-      const result = await generateChatCompletion({ model: "google/gemini-3.1-flash-lite", messages: [{ role: "user", content: prompt }], max_tokens: 8000 }, { signal: AbortSignal.timeout(240000) });
+      const result = await generateChatCompletion({ model: "google/gemini-3.1-flash-lite", messages: [{ role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images.map(url => ({ type: "image_url" as const, image_url: { url } }))] : prompt }], max_tokens: 8000 }, { signal: AbortSignal.timeout(240000) });
       const text = result.choices[0]?.message.content;
       if (typeof text !== "string" || !text) throw new Error("The built-in AI returned no segment text.");
       return text;
@@ -73,16 +99,16 @@ async function requestAnalysis(provider: Provider, model: string, key: string, b
   if (provider === "gemini") {
     endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     headers = { "Content-Type": "application/json", "x-goog-api-key": key };
-    body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", maxOutputTokens: 16000 } };
+    body = { contents: [{ parts: [{ text: prompt }, ...images.map(url => ({ inlineData: { mimeType: "image/jpeg", data: url.split(",")[1] } }))] }], generationConfig: { responseMimeType: "application/json", maxOutputTokens: 16000 } };
   } else if (provider === "anthropic") {
     endpoint = "https://api.anthropic.com/v1/messages";
     headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
-    body = { model, max_tokens: 6000, messages: [{ role: "user", content: prompt }] };
+    body = { model, max_tokens: 6000, messages: [{ role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images.map(url => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: url.split(",")[1] } }))] : prompt }] };
   } else {
     endpoint = `${providerBaseUrl(provider, baseUrl)}/chat/completions`;
     headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
     // Thinking models spend output tokens on reasoning, so keep a generous cap; custom gateways time out above ~8k.
-    body = chatBody(provider, model, prompt, provider === "custom" ? 8000 : 16000);
+    body = { ...chatBody(provider, model, prompt, provider === "custom" ? 8000 : 16000), messages: [{ role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images.map(url => ({ type: "image_url", image_url: { url } }))] : prompt }] };
   }
   const r = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(240000) });
   // Do not include provider bodies: some services can echo credentials in errors.
@@ -92,6 +118,21 @@ async function requestAnalysis(provider: Provider, model: string, key: string, b
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
   return text;
+}
+
+/** Last stage: inspect final output samples and measured media checks, not just the proposed script. */
+export async function reviewRenderedWithKey(provider: Provider, model: string, key: string, baseUrl: string | null, title: string, cues: Cue[], caption: string, duration: number, inspection: VideoInspection | null) {
+  if (!inspection) {
+    const review = await reviewWithKey(provider, model, key, baseUrl, title, cues, caption, "", duration);
+    return { ...review, video_quality: { status: "Unverified" as const, frames_checked: 0, visual_notes: "Worker has no final-output inspection. Update the worker.", limitations: "Transcript-only review; rendered video and audio not inspected." } };
+  }
+  const prompt = `Final quality check AFTER cutting, captions and music. Inspect these ${inspection.frames.length} chronological samples of the ACTUAL rendered ${duration}s short. Metrics: ${JSON.stringify(inspection.metrics)}. Frame times: ${inspection.frames.map(f => f.second).join(",")}. Title: ${title}. Exact speech: ${compactTranscript(cues).slice(0, 5000)}. Caption: ${caption.slice(0, 600)}. Check visible face/object cropping (any niche), caption legibility/overlap/safe placement, obvious blur, opening strength, standalone setup/payoff and ending. Do not claim you watched continuous video or heard audio/music: only sampled images, decode/black/silence metrics and transcript are available. Music taste, audio intelligibility and exact subtitle sync remain unverified. Flag problems with specific evidence; never guarantee virality. Return ONLY JSON {"hook":70,"pacing":70,"retention":70,"verdict":"Viral or Needs Work","critique":"...","feedback":["specific action"],"evidence":"sampled-video","video_quality":{"status":"Checked or Needs Work","frames_checked":${inspection.frames.length},"visual_notes":"specific observations","limitations":"sampling and audio limitations"}}.`;
+  const text = await requestAnalysis(provider, model, key, baseUrl, prompt + " IMPORTANT: do not diagnose audio-to-caption synchronization, jump-cut pacing or spoken transcription accuracy from still images. Describe only visible samples and transcript coherence; recommend audio checks without asserting a detected audio defect. Cite sample times for visual findings.", inspection.frames.map(f => `data:image/jpeg;base64,${f.jpeg}`));
+  const review = viralReviewSchema.parse(JSON.parse(text.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")));
+  if (!review.video_quality) throw new Error("Final video inspection returned no quality report.");
+  return { ...review, evidence: "sampled-video" as const, verdict: inspection.metrics.warnings.length || review.video_quality.status !== "Checked" ? "Needs Work" as const : review.verdict,
+    video_quality: { ...review.video_quality, status: inspection.metrics.warnings.length ? "Needs Work" as const : review.video_quality.status, frames_checked: inspection.frames.length, metrics: inspection.metrics,
+      limitations: "Five sampled frames at most; full decode and black/silence checks measured. Continuous action, subtitle sync, speech intelligibility and music taste are not verified." } };
 }
 
 export async function reviewWithKey(provider:Provider,model:string,key:string,baseUrl:string|null,title:string,cues:Cue[],caption:string,voiceover:string,duration:number) {

@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { videoQualitySchema } from "./video-quality-rules";
 export const viralReviewSchema = z.object({
   hook: z.number().int().min(0).max(100), pacing: z.number().int().min(0).max(100), retention: z.number().int().min(0).max(100),
   verdict: z.enum(["Viral", "Needs Work"]), critique: z.string().min(1).max(2000), feedback: z.array(z.string().min(1).max(500)).min(1).max(6),
-  evidence: z.enum(["transcript", "structure-only"]),
+  evidence: z.enum(["transcript", "structure-only", "sampled-video"]),
+  video_quality: videoQualitySchema.optional(),
 });
 export type ViralReview = z.infer<typeof viralReviewSchema>;
 // The owner's Post/Schedule click is the approval; an AI review is optional.

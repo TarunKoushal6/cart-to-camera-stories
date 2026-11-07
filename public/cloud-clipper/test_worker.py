@@ -16,6 +16,19 @@ import app
 import openshorts_adapter
 
 class WorkerTests(unittest.TestCase):
+    def test_final_quality_on_real_saved_clip_after_captions_and_music(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp); output = d / 'final.mp4'; ass = d / 'final.ass'
+            app.captions(ass, [{'start': 0, 'end': 20, 'text': 'A complete final video thought'}], 0, 20)
+            app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=5', '-f', 'lavfi', '-i', 'sine=frequency=250:duration=20', '-t', '20', '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-c:a', 'aac', str(output)])
+            result = app.inspect_output(output, ass, 20, 'chill')
+            self.assertTrue(result['metrics']['decoded'])
+            self.assertTrue(result['metrics']['has_audio'])
+            self.assertEqual(result['metrics']['caption_overlaps'], 0)
+            self.assertEqual(result['metrics']['music'], 'chill')
+            self.assertEqual(len(result['frames']), 5)
+            self.assertTrue(all(len(f['jpeg']) < 160000 for f in result['frames']))
+
     def test_larger_topic_batch_and_speech_first_music(self):
         self.assertEqual(app.Render.model_fields['targets'].metadata[1].max_length, 60)
         self.assertEqual(app.MusicPlan().volume, 0.10)
