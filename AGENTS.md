@@ -35,7 +35,7 @@
 - Accounts without a saved cloud worker use the shared DEFAULT_CLOUD_WORKER_URL (optional CLOUD_WORKER_TOKEN secret); worker fetches use redirect:"manual" and reject 3xx — Workers runtime doesn't support redirect:"error".
 - Cloud worker reports a stage/progress object on /jobs/{id}; the app reads it through a read-only progress function that never claims the job lease — keeps live progress cheap and separate from job advancement.
 - Cloud jobs attach each clip as soon as the worker lists it in `completed`, and a worker failure keeps already-finished clips before marking the job failed — long batches show results early and a late crash never discards finished work.
-- AI moment selection sends a condensed transcript (src/lib/transcript-condense.ts: filler removed, top-energy ~30s windows spread across the video) and drops clips outside the shown windows; reviews send plain timestamped lines — keeps long-video AI input ~80% smaller.
+- Moment selection uses bounded condensed topic batches, validates both boundaries and deduplicates overlaps; built-in analysis uses the typed Gateway SDK to keep evidence and token use bounded.
 - Stopping a cloud job marks it failed with STOPPED_MESSAGE, then best-effort calls the worker's `/jobs/{id}/cancel`; all job-state updates in advancement are guarded to active statuses so a late tick never revives a stopped job.
 - The root route clears the React Query cache whenever the signed-in user changes — cached videos/clips must never leak to the next account in the same browser.
 

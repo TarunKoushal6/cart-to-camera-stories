@@ -1,5 +1,8 @@
 - [x] Verified 5 current saved clips (23/32/29/32/28s), one 720×1280 MP4 and overlapping repeated words; fixed caption timelines and verified a real 60-second local worker render.
-- [ ] Apply cleaned captions to existing saved MP4s — blocked on deploying the updated app.py to the user's VPS and re-rendering from original sources; stored burned-in captions cannot be changed in place.
+- [x] Topic-led 20–60s selection: eight bounded reads with setup/payoff context, evidence filtering and overlap dedup; saved 170-minute transcript returned eight candidates of 23–57s, ~71% smaller input. Candidates only, not newly rendered clips; old transcript has scrambled/overlapping speech, limiting quality.
+- [x] Automatic per-reel music: explicit tone mapping, no arbitrary inspiring fallback, 10% normalized bed with stronger ducking; existing captions retained; real local music mix and 20s/60s renders passed.
+- [x] Cost evidence: latest old job had four saved clips; 0.017299-credit selection plus four reviews measured in gateway logs. Cash conversion/VPS per-reel allocation remain unknown.
+- [ ] Verify fresh larger batch and music on VPS — requires publishing and updating the user's worker; do not change or delete existing reels.
 - [x] Stop button for auto cut runs (app + worker cancel); stuck old runs stopped; signed-in Stop click verified.
 - [x] Per-account isolation: database rules already separate accounts; fixed the browser keeping the previous account's videos/clips after switching accounts.
 - [ ] Test run of gTKS8SAwUzE — blocked: worker queue full (HTTP 429) from old waiting runs; needs publish + run.bat to load the new app.py.

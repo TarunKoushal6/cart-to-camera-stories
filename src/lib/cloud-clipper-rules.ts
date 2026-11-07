@@ -1,17 +1,18 @@
 import { z } from "zod";
 import { cueSchema, segmentSchema, VIBES } from "./studio-rules";
+import { MAX_JOB_CLIPS } from "./moment-selection";
 
 /** Background music for cloud clips: "auto" follows the AI's per-clip mood, "off" keeps original audio only. */
 export const MUSIC_MODES = ["auto", "off", ...VIBES] as const;
 export type MusicMode = typeof MUSIC_MODES[number];
 export const musicModeSchema = z.enum(MUSIC_MODES);
 /** Music bed level under speech; the worker also ducks it further whenever someone talks. */
-export const MUSIC_VOLUME = 0.16;
+export const MUSIC_VOLUME = 0.10;
 /** Mood the worker should use for one clip, or null for no music. */
 export function clipMusic(mode: MusicMode, vibe?: string | null) {
   if (mode === "off") return null;
   if (mode !== "auto") return mode;
-  return (VIBES as readonly string[]).includes(vibe ?? "") ? vibe as typeof VIBES[number] : "inspiring";
+  return (VIBES as readonly string[]).includes(vibe ?? "") ? vibe as typeof VIBES[number] : null;
 }
 
 /** Shared worker used by every account that hasn't saved its own. */
@@ -40,7 +41,7 @@ export const workerStatusSchema = z.object({
   status: z.enum(["transcribing", "analyzed", "rendering", "complete", "failed"]),
   duration: z.number().min(20).max(86400).optional(),
   cues: z.array(cueSchema).max(75000).optional(),
-  completed: z.array(z.string().uuid()).max(15).optional(),
+  completed: z.array(z.string().uuid()).max(MAX_JOB_CLIPS).optional(),
   error: z.string().max(20000).optional(),
 }).merge(workerProgressSchema);
 export const workerHealthSchema = z.object({ ok: z.literal(true), protocol: z.literal("cutline-v1"), protected: z.boolean(), engine: z.enum(["cutline", "openshorts"]).optional() });

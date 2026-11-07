@@ -16,6 +16,21 @@ import app
 import openshorts_adapter
 
 class WorkerTests(unittest.TestCase):
+    def test_larger_topic_batch_and_speech_first_music(self):
+        self.assertEqual(app.Render.model_fields['targets'].metadata[1].max_length, 60)
+        self.assertEqual(app.MusicPlan().volume, 0.10)
+        with self.assertRaises(ValueError): app.music_bed('none', 20, Path('/tmp/invalid-music.wav'))
+
+    def test_real_ducked_music_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            speech, bed, mixed = d / 'speech.wav', d / 'chill.wav', d / 'mixed.wav'
+            app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'sine=frequency=250:duration=3', str(speech)])
+            app.music_bed('chill', 3, bed)
+            args = app.music_mix_args(3, 0.10)
+            app.run(['ffmpeg', '-y', '-i', str(speech), '-i', str(bed), *args[:2], '-map', '[a]', str(mixed)])
+            self.assertGreater(mixed.stat().st_size, 10000)
+
     def test_overlap_dedup_preserves_sequential_repeats(self):
         cues = app.normalized_caption_words([
             {'start': 0, 'end': 0.7, 'text': 'I'},

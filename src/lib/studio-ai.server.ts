@@ -1,5 +1,6 @@
 import { parseAiSegments, providerBaseUrl, compactTranscript, transcriptEnd, VIBES, type Provider, type Cue } from "./studio-rules";
-import { condenseTranscript, withinKept } from "./transcript-condense";
+import { momentBatches, mergeMoments, evidencedMoments, type Moment } from "./moment-selection";
+import { generateChatCompletion, GatewayError } from "@lovable.dev/ai-gateway";
 import { z } from "zod";
 import { viralReviewSchema } from "./clip-review-rules";
 import { AiRequestError } from "./studio-ai-default.server";
@@ -39,10 +40,35 @@ export async function fetchModels(provider: Provider, key: string, baseUrl?: str
 }
 
 export async function analyzeWithKey(provider: Provider, model: string, key: string, cues: Cue[], baseUrl?: string | null, structure?: {title:string;duration:number;outline:string}) {
-  // Long transcripts are condensed (filler removed, only high-energy windows kept) to cut input tokens ~80%.
-  const condensed = cues.length ? condenseTranscript(cues) : null;
-  const excerptNote = condensed?.filtered ? " The transcript is an excerpt: only the highest-energy parts are shown, separated by '…'. Pick clips only from the shown parts." : "";
-  const prompt = `Find ALL distinct high-retention (up to 15), self-contained viral hooks. Each segment MUST be 20–60 seconds and capture one complete thought (full setup and payoff — never cut mid-sentence); use the length the moment needs, typically 30–55 seconds, within the supplied duration. Prefer more distinct clips over fewer. Do not invent words. Score potential 0–100, not a guaranteed prediction. Keep each title under 60 characters and each reason to one short sentence. Tag each with the background-music mood that fits it: one of ${VIBES.join("|")}. ${cues.length?"The transcript is one line per phrase as '[MM:SS] text' (or '[H:MM:SS] text' past one hour); each stamp is when that phrase starts. Use these timestamps, and return start/end as plain seconds (e.g. [1:02:05] = 3725)."+excerptNote:"You have NOT watched or heard this video. Suggest provisional candidate windows based ONLY on the title, duration and user outline. Every reason must start with 'Structure-only candidate: ' and disclose that speech, pacing and timing are unverified. Do not claim actual scene content."} Return ONLY JSON: {"segments":[{"title":"...","start":0,"end":42,"score":85,"reason":"...","vibe":"inspiring"}]}. Transcript:\n${condensed?.text ?? ""}\n Structure: ${JSON.stringify(structure||null)}`;
+  const batches = cues.length ? momentBatches(cues) : [{ text: "", start: 0, end: structure?.duration ?? 0, kept: [], filtered: false, originalChars: 0, condensedChars: 0 }];
+  const moments: Moment[] = [];
+  // Two bounded calls at a time, not one overwhelming multi-hour prompt or an unbounded request fan-out.
+  for (let i = 0; i < batches.length; i += 2) {
+    const results = await Promise.all(batches.slice(i, i + 2).map(async batch => {
+      const prompt = `Analyze each distinct topic in this excerpt independently. Find every genuinely useful self-contained conversation, story, surprising fact, practical tip or compelling moment (maximum 15 in this excerpt, not a target). Do not stop after the first few or select only dramatic English hook words; quiet insights and Hindi/Hinglish topics count too. Each clip MUST be 20–60 seconds. Let the topic determine the exact length: keep its setup/question and complete answer/payoff, start and finish at natural thought boundaries. A complete 23s thought stays 23s; a 47s explanation stays 47s. Never pad, force 60s, or impose a typical length. Exclude sponsor reads, repetition and weak filler; no artificial quota. Do not invent words. Score potential 0–100, not a promise. Keep titles under 60 chars and reasons one short sentence. Choose music for THIS clip's actual topic/tone, not the video's general theme: chill for neutral advice/conversation, emotional for grief/vulnerability, dramatic for genuine danger/tension, inspiring for an explicit uplifting payoff, energetic for excitement/action, funny only for humor. Never use inspiring merely because the speaker is an athlete. Use none when mood is unclear or music would distract. Vibe must be ${VIBES.join("|")}|none. ${cues.length ? `Use absolute timestamps '[MM:SS]' or '[H:MM:SS]' as seconds. Start between ${batch.start} and ${batch.end}; both boundaries must lie within one shown block. Gaps marked … contain unseen speech; never bridge them. Each block ends with an explicit end timestamp. You have not heard audio or seen the footage; tone is transcript-based.` : "You have NOT watched or heard the video. Suggest only provisional windows using the title/duration/outline; every reason starts 'Structure-only candidate: ' and discloses unverified timing."} Return ONLY JSON {"segments":[{"title":"...","start":0,"end":23,"score":80,"reason":"...","vibe":"chill"}]} or {"segments":[]} if nothing qualifies. Transcript:\n${batch.text}\nStructure: ${JSON.stringify(structure || null)}`;
+      const text = await requestAnalysis(provider, model, key, baseUrl, prompt);
+      const parsed = parseAiSegments(text, cues.length ? transcriptEnd(cues) : structure?.duration ?? 0, true);
+      return cues.length ? evidencedMoments(parsed, batch) : parsed;
+    }));
+    moments.push(...results.flat());
+  }
+  const selected = mergeMoments(moments);
+  if (!selected.length) throw new Error("No complete 20–60 second moments were found in the available transcript. Check transcript quality before retrying.");
+  return selected;
+}
+
+async function requestAnalysis(provider: Provider, model: string, key: string, baseUrl: string | null | undefined, prompt: string) {
+  if (model === "google/gemini-3.1-flash-lite" && baseUrl === "https://ai.gateway.lovable.dev/v1") {
+    try {
+      const result = await generateChatCompletion({ model: "google/gemini-3.1-flash-lite", messages: [{ role: "user", content: prompt }], max_tokens: 8000 }, { signal: AbortSignal.timeout(240000) });
+      const text = result.choices[0]?.message.content;
+      if (typeof text !== "string" || !text) throw new Error("The built-in AI returned no segment text.");
+      return text;
+    } catch (e) {
+      if (e instanceof GatewayError) throw new AiRequestError(`Built-in AI analysis failed (${e.httpStatus ?? e.code}). Retry only after checking credits or service availability.`, e.httpStatus ?? 500);
+      throw e;
+    }
+  }
   let endpoint: string, headers: Record<string,string>, body: object;
   if (provider === "gemini") {
     endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
@@ -65,8 +91,7 @@ export async function analyzeWithKey(provider: Provider, model: string, key: str
   const result = await r.json() as { choices?: { message: { content: string } }[]; content?: { text?: string }[]; candidates?: { content: { parts: { text?: string }[] } }[] };
   const text = result.choices?.[0]?.message.content ?? result.content?.map(c=>c.text || "").join("") ?? result.candidates?.[0]?.content.parts.map(p=>p.text || "").join("");
   if (!text) throw new Error("The provider returned no segments.");
-  const segments = parseAiSegments(text, cues.length ? transcriptEnd(cues) + 1 : structure?.duration || 0);
-  return condensed?.filtered ? withinKept(segments, condensed.kept) : segments;
+  return text;
 }
 
 export async function reviewWithKey(provider:Provider,model:string,key:string,baseUrl:string|null,title:string,cues:Cue[],caption:string,voiceover:string,duration:number) {

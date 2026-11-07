@@ -51,7 +51,7 @@ describe("transcript condensing for AI moment selection", () => {
 
 describe("background music", () => {
   it("auto uses the clip's AI mood", () => { expect(clipMusic("auto", "chill")).toBe("chill"); });
-  it("auto falls back to inspiring when the AI gave no mood", () => { expect(clipMusic("auto", undefined)).toBe("inspiring"); });
+  it("auto keeps original audio when the mood is unknown rather than adding mismatched music", () => { expect(clipMusic("auto", undefined)).toBeNull(); expect(clipMusic("auto", "none")).toBeNull(); });
   it("off means no music", () => { expect(clipMusic("off", "energetic")).toBeNull(); });
   it("a chosen mood applies to every clip", () => { expect(clipMusic("dramatic", "funny")).toBe("dramatic"); });
   it("an unknown AI mood keeps the clip and drops the mood", () => {

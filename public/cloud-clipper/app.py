@@ -55,11 +55,11 @@ class Target(BaseModel):
     upload_url: HttpUrl
 
 class MusicPlan(BaseModel):
-    volume: float = Field(default=0.16, ge=0, le=0.5)
+    volume: float = Field(default=0.10, ge=0, le=0.5)
     clips: dict[str, str | None] = Field(default_factory=dict)  # target id -> vibe, or None for no music
 
 class Render(BaseModel):
-    targets: list[Target] = Field(min_length=1, max_length=15)
+    targets: list[Target] = Field(min_length=1, max_length=60)
     music: MusicPlan | None = None
 
 def folder(job):
@@ -675,7 +675,7 @@ def synth_expr(vibe):
     parts = [pad]
     if kick: parts.append(f'0.55*sin(2*PI*(45+90*exp(-mod(t,{beat:.4f})*35))*mod(t,{beat:.4f}))*exp(-mod(t,{beat:.4f})*7)')
     if hats: parts.append(f'0.06*(random(0)*2-1)*exp(-mod(t+{beat/2:.4f},{beat:.4f})*60)')
-    if arp:
+    if arp and vibe in ('energetic', 'funny'):
         step = beat / 2; note = f'mod(floor(t/{step:.4f}),3)'
         mult = f'if(eq({note},0),1,if(eq({note},1),{T},1.498))'
         parts.append(f'0.12*sin(2*PI*{R}*4*{mult}*t)*exp(-mod(t,{step:.4f})*9)')
@@ -683,12 +683,13 @@ def synth_expr(vibe):
 
 def music_bed(vibe, seconds, out):
     """Royalty-free bed for one clip: a licensed track from music/<vibe>/ if present, else an original synth."""
-    if vibe not in VIBES: vibe = 'inspiring'
+    if vibe not in VIBES: raise ValueError('Unknown music mood; keep original audio instead')
     track = music_file(vibe, out.stem)
     if track:
         run(['ffmpeg', '-y', '-stream_loop', '-1', '-i', str(track), '-t', f'{seconds:.2f}', '-ac', '2', '-ar', '48000', str(out)], failure='FFmpeg could not prepare the music track')
         return out
-    lowpass = STYLES[vibe][5]
+    # Speech-led reels need an unobtrusive bed, not a busy arpeggio or cartoon rhythm under a serious topic.
+    lowpass = min(STYLES[vibe][5], 2800)
     extra = ',aecho=0.8:0.7:120:0.25' if vibe == 'emotional' else ''
     run(['ffmpeg', '-y', '-f', 'lavfi', '-i', f"aevalsrc='{synth_expr(vibe)}':s=48000:d={seconds:.2f}",
          '-af', f'lowpass=f={lowpass},highpass=f=35{extra},alimiter=limit=0.9,aformat=channel_layouts=stereo', str(out)], failure='FFmpeg could not synthesise background music')
@@ -699,8 +700,8 @@ def music_mix_args(duration, volume):
     fade = max(0.0, duration - 1.5)
     return ['-filter_complex',
             f'[0:a]aresample=48000,asplit=2[sp][sc];'
-            f'[1:a]aresample=48000,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
-            f'[m][sc]sidechaincompress=threshold=0.05:ratio=3:attack=20:release=450[duck];'
+            f'[1:a]aresample=48000,loudnorm=I=-24:TP=-3:LRA=7,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
+            f'[m][sc]sidechaincompress=threshold=0.025:ratio=6:attack=15:release=650[duck];'
             f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
             '-map', '0:v', '-map', '[a]']
 

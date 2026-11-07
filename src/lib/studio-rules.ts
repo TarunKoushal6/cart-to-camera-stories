@@ -20,12 +20,12 @@ export const cueSchema = z.object({ start: z.number().min(0), end: z.number().mi
 export const VIBES = ["energetic", "chill", "emotional", "dramatic", "inspiring", "funny"] as const;
 export type Vibe = typeof VIBES[number];
 export const CLIP_MIN_SECONDS = 20, CLIP_MAX_SECONDS = 60;
-export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000), vibe: z.enum(VIBES).optional() }).refine(s => s.end - s.start >= CLIP_MIN_SECONDS && s.end - s.start <= CLIP_MAX_SECONDS, `Clips must be ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} seconds long.`);
+export const segmentSchema = z.object({ title: z.string().min(1).max(200), start: z.number().min(0), end: z.number(), score: z.number().int().min(0).max(100), reason: z.string().max(1000), vibe: z.enum([...VIBES, "none"]).optional() }).refine(s => s.end - s.start >= CLIP_MIN_SECONDS && s.end - s.start <= CLIP_MAX_SECONDS, `Clips must be ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} seconds long.`);
 /**
  * Reads AI segment JSON, tolerating code fences, a response cut off mid-way, and individual bad items.
- * Keeps every complete, valid segment that ends by `lastSecond`, up to 15.
+ * Keeps up to 15 valid candidates per bounded AI response; the batch merger handles the job ceiling.
  */
-export function parseAiSegments(text: string, lastSecond: number) {
+export function parseAiSegments(text: string, lastSecond: number, allowEmpty = false) {
   const clean = text.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
   let items: unknown[] = [];
   try {
@@ -40,12 +40,12 @@ export function parseAiSegments(text: string, lastSecond: number) {
     const r = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : raw;
     if (r && typeof r === "object" && typeof (r as { score?: unknown }).score === "number") (r as { score: number }).score = Math.round((r as { score: number }).score);
     // An unknown mood must not discard an otherwise good clip.
-    if (r && typeof r === "object") { const o = r as { vibe?: unknown }; const v = typeof o.vibe === "string" ? o.vibe.toLowerCase().trim() : undefined; if (v && (VIBES as readonly string[]).includes(v)) o.vibe = v; else delete o.vibe; }
+    if (r && typeof r === "object") { const o = r as { vibe?: unknown }; const v = typeof o.vibe === "string" ? o.vibe.toLowerCase().trim() : undefined; if (v && [...VIBES, "none"].includes(v)) o.vibe = v; else delete o.vibe; }
     const s = segmentSchema.safeParse(r);
     if (s.success && s.data.end <= lastSecond) out.push(s.data);
     if (out.length === 15) break;
   }
-  if (!out.length) throw new Error(`The AI returned no usable ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} second clips. Try again.`);
+  if (!out.length && !allowEmpty) throw new Error(`The AI returned no usable ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} second clips. Try again.`);
   return out;
 }
 export function youtubeId(value: string) {

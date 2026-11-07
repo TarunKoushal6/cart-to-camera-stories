@@ -52,7 +52,7 @@ export function windowScore(phrases: Phrase[]) {
  * and keeps only the strongest windows (spread across the whole video) in chronological order.
  * Short transcripts are only cleaned, never filtered.
  */
-export function condenseTranscript(cues: Cue[], opts: { windowSeconds?: number; keepRatio?: number; minWords?: number; buckets?: number } = {}): CondenseResult {
+export function condenseTranscript(cues: Cue[], opts: { windowSeconds?: number; keepRatio?: number; minWords?: number; buckets?: number; contextSeconds?: number } = {}): CondenseResult {
   const windowSeconds = opts.windowSeconds ?? 60, keepRatio = opts.keepRatio ?? 0.2, minWords = opts.minWords ?? 3000, buckets = opts.buckets ?? 12;
   const phrases = toPhrases(cues);
   const originalChars = phrases.reduce((n, p) => n + p.text.length + 14, 0);
@@ -84,16 +84,18 @@ export function condenseTranscript(cues: Cue[], opts: { windowSeconds?: number; 
   const kept: { start: number; end: number }[] = [];
   const blocks: string[] = [];
   for (const w of chosen) {
+    const context = opts.contextSeconds ?? 0;
+    const phrases = context ? cleaned.filter(p => p.end > w.start - context && p.start < w.end + context) : w.phrases;
+    const start = phrases[0]?.start ?? w.start, end = phrases.at(-1)?.end ?? w.end;
     const prev = kept.at(-1);
-    if (prev && w.start - prev.end < 2) { prev.end = w.end; blocks[blocks.length - 1] += "\n" + w.phrases.map(line).join("\n"); }
-    else { kept.push({ start: w.start, end: w.end }); blocks.push(w.phrases.map(line).join("\n")); }
+    if (prev && start - prev.end < 2) { const extra = phrases.filter(p => p.start >= prev.end); prev.end = Math.max(prev.end, end); blocks[blocks.length - 1] += "\n" + extra.map(line).join("\n"); }
+    else { kept.push({ start, end }); blocks.push(phrases.map(line).join("\n")); }
   }
   const text = blocks.join("\n…\n");
   return { text, kept, originalChars, condensedChars: text.length, filtered: true };
 }
 
-/** Keeps AI segments that start inside (or just before) a window the AI was shown; falls back to all if none match. */
+/** Both boundaries must be inside the same shown block: never approve an unseen payoff across an excerpt gap. */
 export function withinKept<T extends { start: number; end: number }>(segments: T[], kept: { start: number; end: number }[]) {
-  const ok = segments.filter(s => kept.some(k => s.start >= k.start - 5 && s.start <= k.end + 2));
-  return ok.length ? ok : segments;
+  return segments.filter(s => kept.some(k => s.start >= k.start && s.end <= k.end));
 }
