@@ -44,6 +44,24 @@ class WorkerTests(unittest.TestCase):
             app.run(['ffmpeg', '-y', '-i', str(speech), '-i', str(bed), *args[:2], '-map', '[a]', str(mixed)])
             self.assertGreater(mixed.stat().st_size, 10000)
 
+    def test_music_is_audible_but_ducked_under_speech(self):
+        import array, math, subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp); speech, bed = d/'speech.wav', d/'bed.wav'
+            # Distinct frequencies let us measure the added bed separately from speech.
+            app.run(['ffmpeg','-y','-f','lavfi','-i',r'aevalsrc=if(lt(t\,2)\,0\,0.3*sin(2*PI*1000*t)):s=48000:d=5',str(speech)])
+            app.run(['ffmpeg','-y','-f','lavfi','-i','sine=frequency=220:duration=5',str(bed)])
+            args = app.music_mix_args(5,0.10)
+            def level(start):
+                graph = args[1].replace('alimiter=limit=0.95[a]', 'alimiter=limit=0.95,lowpass=f=400:p=2,lowpass=f=400:p=2[a]')
+                raw = subprocess.check_output(['ffmpeg','-v','error','-i',str(speech),'-i',str(bed),'-filter_complex',graph,'-map','[a]','-ss',str(start),'-t','0.5','-f','f32le','-'])
+                samples = array.array('f'); samples.frombytes(raw)
+                return math.sqrt(sum(x*x for x in samples)/len(samples))
+            quiet, talking = level(1.4), level(2.9)
+            self.assertGreater(quiet,0.003)  # not effectively silent after normalization + gain
+            self.assertGreater(talking,0.001)
+            self.assertLess(talking,quiet)  # music still ducks beneath the voice
+
     def test_overlap_dedup_preserves_sequential_repeats(self):
         cues = app.normalized_caption_words([
             {'start': 0, 'end': 0.7, 'text': 'I'},
@@ -59,19 +77,36 @@ class WorkerTests(unittest.TestCase):
         job, clip = uuid.uuid4(), uuid.uuid4()
         directory = app.folder(job); directory.mkdir()
         source = directory / 'source.mp4'
-        app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=size=320x180:rate=5', '-t', '60', '-c:v', 'libx264', '-threads', '2', str(source)])
+        app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'color=size=320x180:rate=5', '-f','lavfi','-i','anullsrc=r=48000:cl=stereo', '-t', '60', '-c:v', 'libx264', '-c:a','aac', '-threads', '2', str(source)])
         app.write(job, status='analyzed', source=str(source), duration=60, cues=[{'start':0, 'end':60, 'text':'One minute complete thought'}])
         target = app.Target(id=clip, path=f'owner/clips/{clip}/video.mp4', segment=app.Segment(title='Minute', start=0, end=60, score=80, reason='Complete'), upload_url='https://test.supabase.co/storage/v1/object/upload/sign/videos/test.mp4?token=test')
         captured = directory / 'uploaded.mp4'
         def upload(url, data, **kwargs):
             captured.write_bytes(data.read())
             return types.SimpleNamespace(status_code=200)
-        with patch.object(app.requests, 'put', side_effect=upload): app.render(job, [target])
+        with patch.object(app.requests, 'put', side_effect=upload): app.render(job, [target], app.MusicPlan(clips={str(clip):'chill'}))
         self.assertEqual(app.read(job)['status'], 'complete')
         import json
         video = next(s for s in json.loads(app.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(captured)]))['streams'] if s['codec_type'] == 'video')
         self.assertEqual((video['width'], video['height']), (1080,1920))
         self.assertEqual(round(float(video['duration'])), 60)
+        quality=json.loads((directory/f'{clip}-quality.json').read_text())['metrics']
+        self.assertEqual(quality['music'],'chill')
+        self.assertTrue(quality['has_audio'])
+
+    def test_failed_music_preserves_clip_and_records_warning(self):
+        job, clip = uuid.uuid4(), uuid.uuid4()
+        d=app.folder(job); d.mkdir(); source=d/'source.mp4'
+        app.run(['ffmpeg','-y','-f','lavfi','-i','color=c=blue:size=320x180:rate=5','-t','20','-c:v','libx264','-threads','2',str(source)])
+        app.write(job,status='analyzed',source=str(source),duration=20,cues=[{'start':0,'end':20,'text':'Complete thought'}])
+        target=app.Target(id=clip,path='owner/video.mp4',segment=app.Segment(title='Test',start=0,end=20,score=80,reason='Complete'),upload_url='https://test.supabase.co/storage/v1/object/upload/sign/videos/test.mp4?token=test')
+        with patch.object(app,'music_bed',side_effect=RuntimeError('Music unavailable')), patch.object(app.requests,'put',return_value=types.SimpleNamespace(status_code=200)):
+            app.render(job,[target],app.MusicPlan(clips={str(clip):'chill'}))
+        import json
+        quality=json.loads((d/f'{clip}-quality.json').read_text())['metrics']
+        self.assertEqual(app.read(job)['status'],'complete')
+        self.assertIsNone(quality['music'])
+        self.assertTrue(any('background music could not be mixed' in w for w in quality['warnings']))
 
     def test_real_vertical_render_and_exact_upload(self):
         job, clip = uuid.uuid4(), uuid.uuid4()

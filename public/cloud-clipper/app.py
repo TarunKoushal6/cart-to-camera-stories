@@ -718,8 +718,8 @@ def music_mix_args(duration, volume):
     fade = max(0.0, duration - 1.5)
     return ['-filter_complex',
             f'[0:a]aresample=48000,asplit=2[sp][sc];'
-            f'[1:a]aresample=48000,loudnorm=I=-24:TP=-3:LRA=7,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
-            f'[m][sc]sidechaincompress=threshold=0.025:ratio=6:attack=15:release=650[duck];'
+            f'[1:a]aresample=48000,loudnorm=I=-18:TP=-3:LRA=7,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
+            f'[m][sc]sidechaincompress=threshold=0.08:ratio=3:attack=30:release=350:makeup=2[duck];'
             f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
             '-map', '0:v', '-map', '[a]']
 
@@ -810,6 +810,7 @@ def _render(job, targets, music=None):
             encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-maxrate', '5500k', '-bufsize', '11000k', '-pix_fmt', 'yuv420p',
                       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(output)]
             rendered = False
+            music_warning = None
             if vibe:
                 bed = d / f'{t.id}-music.wav'
                 try:
@@ -817,9 +818,10 @@ def _render(job, targets, music=None):
                     run(['ffmpeg', '-y', '-ss', str(offset), '-i', str(render_source), '-i', bed.name, '-t', str(length),
                          '-vf', filters, *music_mix_args(length, music.volume), *encode], cwd=str(d), failure='FFmpeg could not mix background music')
                     rendered = True
-                except StepError:
+                except Exception:
                     # Music is a nice-to-have: never lose the clip because the mix failed.
                     log.exception('Music mix failed for %s; rendering without music', t.id)
+                    music_warning = 'Requested background music could not be mixed; original audio preserved. Check worker logs.'
                 finally:
                     bed.unlink(missing_ok=True)
             if not rendered:
@@ -828,6 +830,7 @@ def _render(job, targets, music=None):
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
             # Final media check is last, AFTER all visual/audio edits, before uploading the unchanged result.
             inspection = inspect_output(output, ass, length, vibe if rendered else None, content_box)
+            if music_warning: inspection['metrics']['warnings'].append(music_warning)
             (d / f'{t.id}-quality.json').write_text(json.dumps(inspection))
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))
