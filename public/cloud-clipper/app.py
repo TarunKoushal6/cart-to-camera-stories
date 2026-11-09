@@ -538,6 +538,20 @@ CAPTION_WHITE = '&H00FFFFFF'
 CAPTION_ACCENTS = ('&H00FFFF00', '&H0000FF33', '&H0000D7FF')  # electric cyan, neon lime, warm amber gold
 CAPTION_MAX_WORDS, CAPTION_MIN_WORDS, CAPTION_MAX_CHARS, CAPTION_GAP = 4, 3, 22, 0.6
 DEVANAGARI = re.compile('[\u0900-\u097F\uA8E0-\uA8FF]')
+# Full source fits inside this centered band; title and captions never cover it.
+PODCAST_FILTER = 'scale=1080:810:force_original_aspect_ratio=decrease:flags=lanczos:force_divisible_by=2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1'
+
+def hook_lines(title):
+    """Bounded, ASS-safe existing AI title; no extra AI call or caption style change."""
+    lines, current = [], ''
+    for word in caption_word(title).split():
+        word = word[:28]
+        if current and len(current) + len(word) + 1 > 28:
+            lines.append(current); current = ''
+        current = (current + ' ' + word).strip()
+    if current: lines.append(current)
+    if len(lines) > 3: lines = [*lines[:2], lines[2][:25] + '...']
+    return '\\N'.join(' '.join(font_word(w) for w in line.split()) for line in lines)
 
 def caption_word(s):
     # NFC keeps Devanagari matras/virama attached; str.upper() leaves Devanagari untouched and only
@@ -621,7 +635,7 @@ def caption_lines(cues, start, end):
             lines.append(f'Dialogue: 0,{stamp(a-start)},{stamp(b-start)},Main,,0,0,0,,{" ".join(parts)}')
     return lines
 
-def captions(path, cues, start, end):
+def captions(path, cues, start, end, title=''):
     header = f'''[Script Info]
 ScriptType: v4.00+
 PlayResX: 720
@@ -630,11 +644,15 @@ WrapStyle: 0
 ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Main,{CAPTION_FONT},48,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,2,50,50,380,1
+Style: Main,{CAPTION_FONT},48,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,2,50,50,260,1
+Style: Hook,{CAPTION_FONT},38,{CAPTION_WHITE},{CAPTION_WHITE},&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,4,2,5,60,60,0,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
-    path.write_text(header + '\n'.join(caption_lines(cues, start, end)), encoding='utf-8')
+    lines = caption_lines(cues, start, end)
+    hook = hook_lines(title)
+    if hook: lines.append(f'Dialogue: 1,{stamp(0)},{stamp(end-start)},Hook,,0,0,0,,{{\\pos(360,250)\\an5}}{hook}')
+    path.write_text(header + '\n'.join(lines), encoding='utf-8')
 
 
 # ---- Royalty-free background music ----
@@ -715,7 +733,7 @@ def render(job, targets, music=None):
     finally:
         CURRENT.job = None
 
-def inspect_output(output, ass, expected, music):
+def inspect_output(output, ass, expected, music, content_box=None):
     """Runs after captions/music. Full decode plus measured warnings and bounded final-output samples."""
     import base64
     probe = json.loads(run(['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(output)]))
@@ -723,14 +741,16 @@ def inspect_output(output, ass, expected, music):
     duration = float(probe['format']['duration'])
     audio = any(s['codec_type'] == 'audio' for s in probe['streams'])
     run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(output), '-map', '0:v', '-map', '0:a?', '-f', 'null', '-'], failure='Final MP4 decode check failed')
-    args = ['ffmpeg', '-nostats', '-i', str(output), '-vf', 'blackdetect=d=0.5:pix_th=0.10']
+    # Ignore intentional letterbox bars and overlaid text when measuring the actual source picture.
+    picture = f'crop={content_box[0]}:{content_box[1]}:{content_box[2]}:{content_box[3]},' if content_box else ''
+    args = ['ffmpeg', '-nostats', '-i', str(output), '-vf', picture + 'blackdetect=d=0.5:pix_th=0.10']
     if audio: args += ['-af', 'silencedetect=noise=-40dB:d=0.7']
     diagnostic = subprocess.run([*args, '-f', 'null', '-'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
     if diagnostic.returncode: raise StepError('Final video measurement failed')
     report = diagnostic.stderr.decode(errors='replace')
     black = sum(float(x) for x in re.findall(r'black_duration:([\d.]+)', report))
     silence = sum(float(x) for x in re.findall(r'silence_duration: ([\d.]+)', report))
-    lines = [l.split(',', 3) for l in ass.read_text(encoding='utf-8').splitlines() if l.startswith('Dialogue:')]
+    lines = [l.split(',', 3) for l in ass.read_text(encoding='utf-8').splitlines() if l.startswith('Dialogue: 0,')]
     def event_time(t):
         h, m, s = t.split(':'); return int(h) * 3600 + int(m) * 60 + float(s)
     overlaps = sum(event_time(a[2]) > event_time(b[1]) + 0.01 for a, b in zip(lines, lines[1:]))
@@ -761,7 +781,7 @@ def _render(job, targets, music=None):
             s = t.segment
             if not 20 <= s.end-s.start <= 60 or s.end > state['duration']: raise RuntimeError('Invalid clip window')
             ass = d / f'{t.id}.ass'; output = d / f'{t.id}.mp4'
-            captions(ass, state['cues'], s.start, s.end)
+            captions(ass, state['cues'], s.start, s.end, s.title)
             render_source = source
             offset = s.start
             if ENGINE == 'openshorts':
@@ -772,7 +792,19 @@ def _render(job, targets, music=None):
                 reframe_source(cut, vertical)
                 render_source, offset = vertical, 0
             # Relative name + cwd: Windows paths (C:\\...) break FFmpeg filter parsing at the drive colon.
-            filters = f'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,ass={ass.name}'
+            if ENGINE == 'openshorts':
+                filters = f'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,setsar=1,ass={ass.name}'
+                content_box = None
+            else:
+                filters = f'{PODCAST_FILTER},ass={ass.name}'
+                probe = json.loads(run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,sample_aspect_ratio:stream_side_data=rotation', '-of', 'json', str(render_source)]))['streams'][0]
+                sw, sh = probe['width'], probe['height']
+                sar = probe.get('sample_aspect_ratio', '1:1').split(':')
+                if len(sar) == 2 and sar[1] != '0': sw *= float(sar[0]) / float(sar[1])
+                if any(abs(float(x.get('rotation', 0))) % 180 == 90 for x in probe.get('side_data_list', [])): sw, sh = sh, sw
+                ratio = min(1080 / sw, 810 / sh)
+                w, h = max(2, int(sw * ratio) // 2 * 2), max(2, int(sh * ratio) // 2 * 2)
+                content_box = (w, h, (1080-w)//2, (1920-h)//2)
             length = s.end - s.start
             vibe = music.clips.get(str(t.id)) if music else None
             encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-maxrate', '5500k', '-bufsize', '11000k', '-pix_fmt', 'yuv420p',
@@ -795,7 +827,7 @@ def _render(job, targets, music=None):
                      '-vf', filters, *encode], cwd=str(d))
             if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
             # Final media check is last, AFTER all visual/audio edits, before uploading the unchanged result.
-            inspection = inspect_output(output, ass, length, vibe if rendered else None)
+            inspection = inspect_output(output, ass, length, vibe if rendered else None, content_box)
             (d / f'{t.id}-quality.json').write_text(json.dumps(inspection))
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))

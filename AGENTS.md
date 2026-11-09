@@ -21,6 +21,7 @@
 - Personal AI and Facebook credentials are AES-GCM encrypted in service-role-only studio_credentials and accessed only after user authorization; prevents browser secret reads.
 - Studio AI calls go through withAi (src/lib/studio-ai-default.server.ts): owner's saved key first, then built-in Lovable AI (DEFAULT_AI, low-cost model via LOVABLE_API_KEY on chat-completions) when no key is saved, it can't be decrypted, or it's refused/down (401/402/403/429/5xx) — clipping works with no external keys; built-in 402/429 get actionable messages.
 - Local FFmpeg WASM exports source MP4s with ASS captions in the browser; the server cannot execute native video tools.
+- Default cloud composition is owned by the downloadable worker, not the legacy browser exporter; deployment needs the published worker file and VPS restart so saved clips reflect current framing.
 
 - YouTube OAuth uses atomic single-use hashed states bound to the authenticated owner and stores encrypted offline tokens only in server-role tables; prevents callback forgery and credential exposure.
 - YouTube uploads stream saved MP4s to a validated Google resumable upload URL; Google publishAt schedules public release and the existing job polls processing status.

@@ -1,3 +1,4 @@
+- [x] New default cloud renders use a 1080×1920 black canvas, full source centered, existing AI title above and captions below; real pixel checks verify both edges, text placement, black-content detection and 60s output (8 worker + 29 app tests). Activation still requires publishing and updating VPS app.py; existing clips unchanged.
 - [x] Uniform topic discovery, exact original-context refinement and semantic dedup: real 175-minute transcript returned 47 candidates (20–55s), not completed MP4s. Existing framing/captions/music retained.
 - [x] Final actual-output checks after captions/music: full decode, dimensions, black/silence, caption overlap metrics and five authenticated samples; real saved MP4 inspections and visual AI checks passed, limitations explicit. 107 app tests and 7 worker tests pass.
 - [x] Measured new selection/visual request costs; lightweight FFmpeg retained, PySceneDetect/auto-editor documented; cash conversion unknown.

@@ -37,7 +37,7 @@ export function CloudWorkerSettings({ savedUrl }: { savedUrl: string | null }) {
     </form>
     <article className="border border-border bg-card rounded-md p-5 space-y-3">
       <h3 className="font-display font-bold">Deploy Free Worker</h3>
-      <p className="text-sm text-muted-foreground">The default download is Cutline’s own worker, not OpenShorts. It downloads YouTube videos, transcribes with free Whisper, and makes center-cropped vertical clips with karaoke captions.</p>
+      <p className="text-sm text-muted-foreground">The default download is Cutline’s own worker, not OpenShorts. New clips keep the full picture centered on a black vertical canvas, with the hook title above and karaoke captions below.</p>
       <ol className="list-decimal pl-5 text-sm space-y-2">
         <li>Create a Docker / Blank Space and upload app.py, openshorts_adapter.py, Dockerfile, requirements.txt and README.md.</li>
         <li>Add WORKER_TOKEN in your host’s secret settings; save the same token above.</li>

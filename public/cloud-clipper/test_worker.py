@@ -78,7 +78,7 @@ class WorkerTests(unittest.TestCase):
         directory = app.folder(job)
         directory.mkdir()
         source = directory / 'source.mp4'
-        app.run(['ffmpeg','-y','-f','lavfi','-i','testsrc2=size=320x180:rate=10','-t','21','-c:v','libx264','-threads','2',str(source)])
+        app.run(['ffmpeg','-y','-f','lavfi','-i','color=c=blue:size=320x180:rate=10','-vf','drawbox=x=0:y=0:w=40:h=180:color=red:t=fill,drawbox=x=280:y=0:w=40:h=180:color=lime:t=fill','-t','21','-c:v','libx264','-threads','2',str(source)])
         app.write(job,status='analyzed',source=str(source),duration=21,cues=[{'start':0,'end':20,'text':'Caption test'}])
         target = app.Target(id=clip,path=f'owner/clips/{clip}/video.mp4',segment=app.Segment(title='Test',start=0,end=20,score=80,reason='Hook'),upload_url='https://test.supabase.co/storage/v1/object/upload/sign/videos/owner/test.mp4?token=test')
         captured = directory / 'uploaded.mp4'
@@ -94,6 +94,31 @@ class WorkerTests(unittest.TestCase):
         video=next(s for s in probe['streams'] if s['codec_type']=='video')
         self.assertEqual((video['width'],video['height']),(1080,1920))
         self.assertEqual(round(float(video['duration'])),20)
+        import subprocess
+        pixels = subprocess.check_output(['ffmpeg','-v','error','-ss','1','-i',str(captured),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-threads','1','-'])
+        def rgb(x,y): return tuple(pixels[(y*1080+x)*3:(y*1080+x)*3+3])
+        self.assertGreater(rgb(40,960)[0],200)  # full left edge
+        self.assertGreater(rgb(1040,960)[1],200)  # full right edge
+        self.assertGreater(rgb(540,960)[2],200)
+        self.assertLess(max(rgb(20,100)),15)
+        self.assertLess(max(rgb(20,1800)),15)
+        def bright_in(y1,y2):
+            return sum(min(rgb(x,y)) > 180 for y in range(y1,y2,4) for x in range(90,990,4))
+        self.assertGreater(bright_in(250,550),30)  # top hook
+        self.assertGreater(bright_in(1390,1560),30)  # bottom captions
+        quality=json.loads((directory / f'{clip}-quality.json').read_text())['metrics']
+        self.assertEqual(quality['caption_overlaps'],0)
+        self.assertEqual(quality['black_seconds'],0)
+        app.run(['ffmpeg','-y','-ss','1','-i',str(captured),'-frames:v','1','-threads','1','/tmp/podcast-layout.png'])
+
+    def test_letterbox_black_source_is_still_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d=Path(tmp); output=d/'black.mp4'; ass=d/'black.ass'
+            app.captions(ass,[{'start':0,'end':20,'text':'Caption test'}],0,20,'Hook title')
+            app.run(['ffmpeg','-y','-f','lavfi','-i','color=c=black:size=320x180:rate=5','-t','20','-vf',f'{app.PODCAST_FILTER},ass={ass.name}','-c:v','libx264','-preset','ultrafast','-threads','2',str(output)],cwd=str(d))
+            quality=app.inspect_output(output,ass,20,None,(1080,608,0,656))['metrics']
+            self.assertGreater(quality['black_seconds'],1)
+            self.assertTrue(any('near-black' in w for w in quality['warnings']))
 
     def test_openshorts_bridge_uses_upstream_functions_and_word_cues(self):
         mock=types.SimpleNamespace(download_youtube_video=lambda url,output_dir:('/tmp/source.mp4','Title'),transcribe_video=lambda path:{'segments':[{'words':[{'start':0,'end':1,'word':'Hello'}]}]})
