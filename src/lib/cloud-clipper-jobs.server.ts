@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { cloudTargetSchema, workerStatusSchema, musicModeSchema, clipMusic, MUSIC_VOLUME } from "./cloud-clipper-rules";
+import { cloudTargetSchema, workerStatusSchema, musicModeSchema, clipMusic, MUSIC_VOLUME, wantsOutro } from "./cloud-clipper-rules";
 import { videoInspectionSchema } from "./video-quality-rules";
 
 const ACTIVE = ["transcribing", "analyzing", "rendering", "finalizing"];
@@ -66,7 +66,8 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         // Older workers ignore `music`; newer ones mix a ducked royalty-free bed per clip mood.
         const mode = musicModeSchema.catch("auto").parse(job.music);
         await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads,
-          music: { volume: MUSIC_VOLUME, clips: Object.fromEntries(uploads.map(u => [u.id, clipMusic(mode, u.segment.vibe)])) } });
+          music: { volume: MUSIC_VOLUME, clips: Object.fromEntries(uploads.map(u => [u.id, clipMusic(mode, u.segment.vibe)])) },
+          outro: wantsOutro(typeof context.claims?.email === "string" ? context.claims.email : null) });
         // Status guards: a Stop pressed mid-tick must never be overwritten back to an active state.
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id).in("status", ACTIVE);
         return { status: "rendering" };

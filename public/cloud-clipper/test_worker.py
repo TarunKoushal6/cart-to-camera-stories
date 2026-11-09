@@ -94,7 +94,7 @@ class WorkerTests(unittest.TestCase):
         import json
         video = next(s for s in json.loads(app.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(captured)]))['streams'] if s['codec_type'] == 'video')
         self.assertEqual((video['width'], video['height']), (1080,1920))
-        self.assertEqual(round(float(video['duration'])), 64)  # 60s clip + 3.5s branded outro
+        self.assertEqual(round(float(video['duration'])), 60)
         quality=json.loads((directory/f'{clip}-quality.json').read_text())['metrics']
         self.assertEqual(quality['music'],'chill')
         self.assertTrue(quality['has_audio'])

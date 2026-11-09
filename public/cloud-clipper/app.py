@@ -61,6 +61,7 @@ class MusicPlan(BaseModel):
 class Render(BaseModel):
     targets: list[Target] = Field(min_length=1, max_length=60)
     music: MusicPlan | None = None
+    outro: bool = False  # the app enables this only for accounts that own the branded outro
 
 def folder(job):
     return ROOT / str(job)
@@ -755,10 +756,10 @@ def append_outro(output, outro):
          '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(joined)], failure='FFmpeg could not append outro')
     joined.replace(output)
 
-def render(job, targets, music=None):
+def render(job, targets, music=None, outro=False):
     CURRENT.job = job
     try:
-        _render(job, targets, music)
+        _render(job, targets, music, outro)
     except Exception as e:
         if not cancelled(job): return fail_render(job, e)
         log.info('Render %s stopped by owner', job); stop_cleanup(job)
@@ -806,7 +807,7 @@ def inspect_output(output, ass, expected, music, content_box=None):
             'has_audio': audio, 'black_seconds': round(black, 3), 'silent_seconds': round(silence, 3),
             'caption_events': len(lines), 'caption_overlaps': overlaps, 'music': music, 'warnings': warnings}, 'frames': frames}
 
-def _render(job, targets, music=None):
+def _render(job, targets, music=None, outro_on=False):
         state = read(job); source = Path(state['source']); d = folder(job); completed = []
         for t in targets:
             check_stop(job)
@@ -863,7 +864,7 @@ def _render(job, targets, music=None):
             # Final media check is last, AFTER all visual/audio edits, before uploading the unchanged result.
             inspection = inspect_output(output, ass, length, vibe if rendered else None, content_box)
             if music_warning: inspection['metrics']['warnings'].append(music_warning)
-            outro = outro_file()
+            outro = outro_file() if outro_on else None
             if outro:
                 try: append_outro(output, outro)
                 except Exception:
@@ -936,7 +937,7 @@ def begin_render(job: uuid.UUID, body: Render):
         if s['status'] in ['rendering','complete']: return {'accepted': True}
         if s['status'] != 'analyzed': raise HTTPException(409, 'Transcript not ready')
         save_state(folder(job) / 'state.json', {**s, 'status': 'rendering'})
-    POOL.submit(render, job, body.targets, body.music)
+    POOL.submit(render, job, body.targets, body.music, body.outro)
     return {'accepted': True}
 
 @app.post('/jobs/{job}/cancel', dependencies=[Depends(authorized)])

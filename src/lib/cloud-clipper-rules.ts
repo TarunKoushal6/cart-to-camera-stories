@@ -15,6 +15,12 @@ export function clipMusic(mode: MusicMode, vibe?: string | null) {
   return (VIBES as readonly string[]).includes(vibe ?? "") ? vibe as typeof VIBES[number] : null;
 }
 
+/** Only these accounts get the branded outro appended to every reel. */
+export const OUTRO_EMAILS = ["koushaltarun5@gmail.com"];
+export function wantsOutro(email?: string | null) {
+  return OUTRO_EMAILS.includes((email ?? "").trim().toLowerCase());
+}
+
 /** Shared worker used by every account that hasn't saved its own. */
 export const DEFAULT_CLOUD_WORKER_URL = "https://86-107-77-170.sslip.io";
 
