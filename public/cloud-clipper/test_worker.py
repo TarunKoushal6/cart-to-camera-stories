@@ -31,7 +31,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_larger_topic_batch_and_speech_first_music(self):
         self.assertEqual(app.Render.model_fields['targets'].metadata[1].max_length, 60)
-        self.assertEqual(app.MusicPlan().volume, 0.10)
+        self.assertEqual(app.MusicPlan().volume, 0.30)
         with self.assertRaises(ValueError): app.music_bed('none', 20, Path('/tmp/invalid-music.wav'))
 
     def test_real_ducked_music_output(self):
@@ -40,7 +40,7 @@ class WorkerTests(unittest.TestCase):
             speech, bed, mixed = d / 'speech.wav', d / 'chill.wav', d / 'mixed.wav'
             app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'sine=frequency=250:duration=3', str(speech)])
             app.music_bed('chill', 3, bed)
-            args = app.music_mix_args(3, 0.10)
+            args = app.music_mix_args(3, 0.30)
             app.run(['ffmpeg', '-y', '-i', str(speech), '-i', str(bed), *args[:2], '-map', '[a]', str(mixed)])
             self.assertGreater(mixed.stat().st_size, 10000)
 
@@ -49,18 +49,23 @@ class WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp); speech, bed = d/'speech.wav', d/'bed.wav'
             # Distinct frequencies let us measure the added bed separately from speech.
-            app.run(['ffmpeg','-y','-f','lavfi','-i',r'aevalsrc=if(lt(t\,2)\,0\,0.3*sin(2*PI*1000*t)):s=48000:d=5',str(speech)])
-            app.run(['ffmpeg','-y','-f','lavfi','-i','sine=frequency=220:duration=5',str(bed)])
-            args = app.music_mix_args(5,0.10)
-            def level(start):
-                graph = args[1].replace('alimiter=limit=0.95[a]', 'alimiter=limit=0.95,lowpass=f=400:p=2,lowpass=f=400:p=2[a]')
-                raw = subprocess.check_output(['ffmpeg','-v','error','-i',str(speech),'-i',str(bed),'-filter_complex',graph,'-map','[a]','-ss',str(start),'-t','0.5','-f','f32le','-'])
+            # Speech-level tone (about -19 dBFS RMS) starts at 2s; the real synthesised bed plays throughout.
+            app.run(['ffmpeg','-y','-f','lavfi','-i',r'aevalsrc=if(lt(t\,2)\,0\,0.25*sin(2*PI*1000*t)):s=48000:d=6',str(speech)])
+            app.music_bed('chill', 6, bed)
+            # Isolate the ducked music and keep only the 300–3000 Hz range phone speakers actually play.
+            graph = app.music_mix_args(6, app.MusicPlan().volume)[1].replace(
+                '[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
+                '[sp]anullsink;[duck]highpass=f=300,highpass=f=300,lowpass=f=3000[a]')
+            def db(start):
+                raw = subprocess.check_output(['ffmpeg','-v','error','-i',str(speech),'-i',str(bed),'-filter_complex',graph,'-map','[a]','-ss',str(start),'-t','0.8','-f','f32le','-'])
                 samples = array.array('f'); samples.frombytes(raw)
-                return math.sqrt(sum(x*x for x in samples)/len(samples))
-            quiet, talking = level(1.4), level(2.9)
-            self.assertGreater(quiet,0.003)  # not effectively silent after normalization + gain
-            self.assertGreater(talking,0.001)
-            self.assertLess(talking,quiet)  # music still ducks beneath the voice
+                return 20*math.log10(math.sqrt(sum(x*x for x in samples)/len(samples))+1e-9)
+            speech_db = 20*math.log10(0.25/math.sqrt(2))
+            pause, talking = db(1.1), db(3.5)
+            self.assertGreater(pause, speech_db - 15)    # clearly audible on a phone between phrases
+            self.assertGreater(talking, speech_db - 20)  # still audible under the voice
+            self.assertLess(talking, pause)              # but ducked beneath speech
+            self.assertLess(talking, speech_db - 8)      # never competes with the voice
 
     def test_overlap_dedup_preserves_sequential_repeats(self):
         cues = app.normalized_caption_words([

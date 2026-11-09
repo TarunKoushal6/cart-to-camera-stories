@@ -55,7 +55,7 @@ class Target(BaseModel):
     upload_url: HttpUrl
 
 class MusicPlan(BaseModel):
-    volume: float = Field(default=0.10, ge=0, le=0.5)
+    volume: float = Field(default=0.30, ge=0, le=0.5)
     clips: dict[str, str | None] = Field(default_factory=dict)  # target id -> vibe, or None for no music
 
 class Render(BaseModel):
@@ -690,13 +690,16 @@ def synth_expr(vibe):
     pos = f'mod(t,{bar:.4f})'
     env = f'min(1,{pos}*3)*min(1,({bar:.4f}-{pos})*6)'  # soft chord changes, no clicks
     pad = f'0.16*{env}*(sin(2*PI*{R}*2*t)+0.7*sin(2*PI*{R}*2*{T}*t)+0.6*sin(2*PI*{R}*2*1.498*t)+0.8*sin(2*PI*{R}*t))*(0.8+0.2*sin(2*PI*0.25*t))'
-    parts = [pad]
+    # Phone speakers barely reproduce < 250 Hz, so the chord also lives an octave or two higher (300–1300 Hz).
+    upper = f'0.14*{env}*(sin(2*PI*{R}*4*t)+0.8*sin(2*PI*{R}*4*{T}*t)+0.7*sin(2*PI*{R}*4*1.498*t))'
+    parts = [pad, upper]
     if kick: parts.append(f'0.55*sin(2*PI*(45+90*exp(-mod(t,{beat:.4f})*35))*mod(t,{beat:.4f}))*exp(-mod(t,{beat:.4f})*7)')
     if hats: parts.append(f'0.06*(random(0)*2-1)*exp(-mod(t+{beat/2:.4f},{beat:.4f})*60)')
-    if arp and vibe in ('energetic', 'funny'):
-        step = beat / 2; note = f'mod(floor(t/{step:.4f}),3)'
-        mult = f'if(eq({note},0),1,if(eq({note},1),{T},1.498))'
-        parts.append(f'0.12*sin(2*PI*{R}*4*{mult}*t)*exp(-mod(t,{step:.4f})*9)')
+    # Soft melodic pluck in every mood: busier for energetic/funny, one note per beat otherwise.
+    step = beat / 2 if arp and vibe in ('energetic', 'funny') else beat
+    note = f'mod(floor(t/{step:.4f}),4)'
+    mult = f'if(eq({note},0),1,if(eq({note},1),{T},if(eq({note},2),1.498,2)))'
+    parts.append(f'0.16*sin(2*PI*{R}*8*{mult}*t)*exp(-mod(t,{step:.4f})*6)')
     return '+'.join(parts)
 
 def music_bed(vibe, seconds, out):
@@ -707,7 +710,7 @@ def music_bed(vibe, seconds, out):
         run(['ffmpeg', '-y', '-stream_loop', '-1', '-i', str(track), '-t', f'{seconds:.2f}', '-ac', '2', '-ar', '48000', str(out)], failure='FFmpeg could not prepare the music track')
         return out
     # Speech-led reels need an unobtrusive bed, not a busy arpeggio or cartoon rhythm under a serious topic.
-    lowpass = min(STYLES[vibe][5], 2800)
+    lowpass = max(3500, min(STYLES[vibe][5], 6000))
     extra = ',aecho=0.8:0.7:120:0.25' if vibe == 'emotional' else ''
     run(['ffmpeg', '-y', '-f', 'lavfi', '-i', f"aevalsrc='{synth_expr(vibe)}':s=48000:d={seconds:.2f}",
          '-af', f'lowpass=f={lowpass},highpass=f=35{extra},alimiter=limit=0.9,aformat=channel_layouts=stereo', str(out)], failure='FFmpeg could not synthesise background music')
@@ -719,7 +722,7 @@ def music_mix_args(duration, volume):
     return ['-filter_complex',
             f'[0:a]aresample=48000,asplit=2[sp][sc];'
             f'[1:a]aresample=48000,loudnorm=I=-18:TP=-3:LRA=7,volume={volume:.3f},afade=t=in:d=1,afade=t=out:st={fade:.2f}:d=1.5[m];'
-            f'[m][sc]sidechaincompress=threshold=0.08:ratio=3:attack=30:release=350:makeup=2[duck];'
+            f'[m][sc]sidechaincompress=threshold=0.1:ratio=2:attack=40:release=400:makeup=2[duck];'
             f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
             '-map', '0:v', '-map', '[a]']
 

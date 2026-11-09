@@ -57,5 +57,5 @@ describe("topic-led moment selection", () => {
   it("accepts intentional no-music mood", () => {
     expect(parseAiSegments(JSON.stringify({ segments: [{ ...moment(0, 23), vibe: "none" }] }), 60)[0]?.vibe).toBe("none");
   });
-  it("keeps music at ten percent before further speech ducking", () => { expect(MUSIC_VOLUME).toBe(0.10); });
+  it("keeps music at thirty percent before further speech ducking", () => { expect(MUSIC_VOLUME).toBe(0.30); });
 });
