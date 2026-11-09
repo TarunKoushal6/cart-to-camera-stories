@@ -5,7 +5,7 @@ import { Check, Cloud, Download, Gauge, Loader2, Music, RefreshCw, Square, Timer
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { startCloudCut, pollCloudCut, cloudCutProgress, cancelCloudCut } from "@/lib/cloud-clipper.functions";
-import { CLOUD_STEPS, cloudJobProgress, downloadStats, isStoppedJob, MUSIC_MODES, type MusicMode } from "@/lib/cloud-clipper-rules";
+import { CLOUD_STEPS, cloudJobProgress, downloadStats, isStoppedJob, MUSIC_MODES, wantsOutro, type MusicMode } from "@/lib/cloud-clipper-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -62,10 +62,10 @@ function useCloudCut(sourceId?: string) {
     finally { advancing.current = false; if (manual) setBusy(false); }
   }
 
-  async function begin(url: string, music: MusicMode = "auto") {
+  async function begin(url: string, music: MusicMode = "auto", outro = true) {
     setBusy(true);
     try {
-      const r = await start({ data: { url, music, ...(sourceId ? { sourceId } : {}) } });
+      const r = await start({ data: { url, music, outro, ...(sourceId ? { sourceId } : {}) } });
       setCurrentJobId(r.id); setCurrentSourceId(r.sourceId);
       await qc.invalidateQueries({ queryKey: ["studio-sources"] }); await qc.invalidateQueries({ queryKey: ["cloud-jobs"] });
       toast.success("Auto cut started — clips will wait for your approval");
@@ -152,8 +152,10 @@ const MUSIC_LABELS: Record<MusicMode, string> = { auto: "Auto — match each cli
 export function AutoCutCard() {
   const state = useCloudCut();
   const [url, setUrl] = useState(""), [music, setMusic] = useState<MusicMode>("auto");
+  const [outro, setOutro] = useState(true), [outroAllowed, setOutroAllowed] = useState(false);
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setOutroAllowed(wantsOutro(data.user?.email))); }, []);
   return <section className="rounded-xl border border-border bg-card p-5 sm:p-7 space-y-5">
-    <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (await state.begin(url, music)) setUrl(""); }}>
+    <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (await state.begin(url, music, outro)) setUrl(""); }}>
     <div className="flex flex-col sm:flex-row gap-3">
       <Input aria-label="YouTube URL" placeholder="Paste a YouTube link — https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} type="url" required className="h-14 text-base bg-background" />
       <Button size="lg" disabled={state.busy || state.active} className="h-14 px-7 shrink-0 font-semibold">
@@ -166,6 +168,10 @@ export function AutoCutCard() {
       </select>
       <span className="text-xs">Royalty-free, kept quiet and lowered automatically whenever someone speaks. No voiceover.</span>
     </label>
+    {outroAllowed && <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <input type="checkbox" aria-label="Add outro" checked={outro} onChange={(e) => setOutro(e.target.checked)} className="h-4 w-4 accent-primary" />
+      Add outro at the end of each reel
+    </label>}
     </form>
     <p className="text-xs text-muted-foreground">Downloads the video, finds every strong moment, cuts 9:16 shorts with burned-in captions and saves them below. Nothing posts until you approve it. Only use videos you own or have permission to repurpose.</p>
     <CloudProgress state={state} />

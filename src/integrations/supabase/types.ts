@@ -258,6 +258,7 @@ export type Database = {
           error: string | null
           id: string
           music: string
+          outro: boolean
           processing_token: string | null
           processing_until: string | null
           source_id: string
@@ -272,6 +273,7 @@ export type Database = {
           error?: string | null
           id?: string
           music?: string
+          outro?: boolean
           processing_token?: string | null
           processing_until?: string | null
           source_id: string
@@ -286,6 +288,7 @@ export type Database = {
           error?: string | null
           id?: string
           music?: string
+          outro?: boolean
           processing_token?: string | null
           processing_until?: string | null
           source_id?: string

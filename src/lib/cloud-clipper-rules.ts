@@ -7,12 +7,12 @@ export const MUSIC_MODES = ["auto", "off", ...VIBES] as const;
 export type MusicMode = typeof MUSIC_MODES[number];
 export const musicModeSchema = z.enum(MUSIC_MODES);
 /** Music bed level under speech; the worker also ducks it further whenever someone talks. */
-export const MUSIC_VOLUME = 0.30;
+export const MUSIC_VOLUME = 0.16;
 /** Mood the worker should use for one clip, or null for no music. */
 export function clipMusic(mode: MusicMode, vibe?: string | null) {
   if (mode === "off") return null;
   if (mode !== "auto") return mode;
-  return (VIBES as readonly string[]).includes(vibe ?? "") ? vibe as typeof VIBES[number] : null;
+  return (VIBES as readonly string[]).includes(vibe ?? "") ? vibe as typeof VIBES[number] : "chill";
 }
 
 /** Only these accounts get the branded outro appended to every reel. */

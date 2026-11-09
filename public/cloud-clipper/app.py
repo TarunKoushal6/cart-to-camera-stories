@@ -1,3 +1,4 @@
+import hashlib
 import traceback
 """Cutline protocol v1: download/transcribe, then render scoped signed-upload targets.
 No database/service-role key or personal AI key is needed on this worker.
@@ -285,7 +286,7 @@ def ytdlp_attempt(job, url, d, cookies):
     if shutil.which('deno'): extra += ['--js-runtimes', 'deno']
     args = ['yt-dlp', '--no-playlist', '--newline', '--progress', '--progress-template', PROGRESS,
             '--max-filesize', '4G', '--match-filter', 'duration <= 14400', *extra,
-            '-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', '--merge-output-format', 'mp4',
+            '-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', '-S', 'res:1080,fps,vbr,abr', '--merge-output-format', 'mp4',
             '-o', str(d / 'source.%(ext)s'), url]
     try:
         p = track(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace'))
@@ -679,8 +680,12 @@ def music_file(vibe, seed):
     tracks = sorted(p for p in folder.iterdir() if p.suffix.lower() in ('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac') and p.stat().st_size > 0)
     return tracks[sum(seed.encode()) % len(tracks)] if tracks else None
 
-def synth_expr(vibe):
+def synth_expr(vibe, seed=''):
     bpm, chords, kick, hats, arp, _ = STYLES[vibe]
+    # Each clip gets its own key, tempo and chord order so reels don't all share one bed.
+    h = int(hashlib.sha1(seed.encode()).hexdigest(), 16) if seed else 0
+    shift = 2 ** (((h % 7) - 3) / 12); bpm = bpm * (0.9 + (h // 7 % 5) * 0.05)
+    rot = h // 35 % len(chords); chords = [(r * shift, t) for r, t in chords[rot:] + chords[:rot]]
     beat = 60 / bpm; bar = beat * 4
     k = f'mod(floor(t/{bar:.4f}),{len(chords)})'
     def pick(vals):
@@ -713,7 +718,7 @@ def music_bed(vibe, seconds, out):
     # Speech-led reels need an unobtrusive bed, not a busy arpeggio or cartoon rhythm under a serious topic.
     lowpass = max(3500, min(STYLES[vibe][5], 6000))
     extra = ',aecho=0.8:0.7:120:0.25' if vibe == 'emotional' else ''
-    run(['ffmpeg', '-y', '-f', 'lavfi', '-i', f"aevalsrc='{synth_expr(vibe)}':s=48000:d={seconds:.2f}",
+    run(['ffmpeg', '-y', '-f', 'lavfi', '-i', f"aevalsrc='{synth_expr(vibe, out.stem)}':s=48000:d={seconds:.2f}",
          '-af', f'lowpass=f={lowpass},highpass=f=35{extra},alimiter=limit=0.9,aformat=channel_layouts=stereo', str(out)], failure='FFmpeg could not synthesise background music')
     return out
 

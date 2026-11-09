@@ -1,0 +1,1 @@
+ALTER TABLE public.studio_cloud_jobs ADD COLUMN IF NOT EXISTS outro boolean NOT NULL DEFAULT true;

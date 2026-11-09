@@ -51,11 +51,15 @@ describe("transcript condensing for AI moment selection", () => {
 
 describe("background music", () => {
   it("auto uses the clip's AI mood", () => { expect(clipMusic("auto", "chill")).toBe("chill"); });
-  it("auto keeps original audio when the mood is unknown rather than adding mismatched music", () => { expect(clipMusic("auto", undefined)).toBeNull(); expect(clipMusic("auto", "none")).toBeNull(); });
+  it("auto gives every reel quiet music, falling back to chill when the mood is unknown", () => { expect(clipMusic("auto", undefined)).toBe("chill"); expect(clipMusic("auto", "none")).toBe("chill"); });
   it("off means no music", () => { expect(clipMusic("off", "energetic")).toBeNull(); });
   it("a chosen mood applies to every clip", () => { expect(clipMusic("dramatic", "funny")).toBe("dramatic"); });
   it("an unknown AI mood keeps the clip and drops the mood", () => {
     const [s] = parseAiSegments(JSON.stringify({ segments: [{ title: "a", start: 0, end: 25, score: 80, reason: "r", vibe: "spooky" }] }), 100);
     expect(s?.vibe).toBeUndefined();
   });
+});
+
+describe("music level", () => {
+  it("keeps the bed low under speech", async () => { const { MUSIC_VOLUME } = await import("@/lib/cloud-clipper-rules"); expect(MUSIC_VOLUME).toBe(0.16); });
 });
