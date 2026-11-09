@@ -94,7 +94,7 @@ class WorkerTests(unittest.TestCase):
         import json
         video = next(s for s in json.loads(app.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(captured)]))['streams'] if s['codec_type'] == 'video')
         self.assertEqual((video['width'], video['height']), (1080,1920))
-        self.assertEqual(round(float(video['duration'])), 60)
+        self.assertEqual(round(float(video['duration'])), 64)  # 60s clip + 3.5s branded outro
         quality=json.loads((directory/f'{clip}-quality.json').read_text())['metrics']
         self.assertEqual(quality['music'],'chill')
         self.assertTrue(quality['has_audio'])
@@ -165,5 +165,18 @@ class WorkerTests(unittest.TestCase):
         with patch.dict(sys.modules,{'main':mock}):
             self.assertEqual(openshorts_adapter.download_source('https://youtube.com/watch?v=test',Path('/tmp')),Path('/tmp/source.mp4'))
             self.assertEqual(openshorts_adapter.transcribe_source(Path('/tmp/source.mp4')),[{'start':0.0,'end':1.0,'text':'Hello'}])
+
+
+class OutroTest(unittest.TestCase):
+    def test_outro_is_appended_to_reel_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / 'clip.mp4'
+            app.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=s=1080x1920:r=25:d=4', '-f', 'lavfi', '-i', 'sine=d=4', '-shortest', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', str(clip)])
+            outro = app.outro_file()
+            self.assertIsNotNone(outro)
+            app.append_outro(clip, outro)
+            info = app.json.loads(app.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration:stream=width,height', '-of', 'json', str(clip)]))
+            self.assertAlmostEqual(float(info['format']['duration']), 7.5, delta=0.3)
+            self.assertEqual((info['streams'][0]['width'], info['streams'][0]['height']), (1080, 1920))
 
 if __name__ == '__main__': unittest.main()

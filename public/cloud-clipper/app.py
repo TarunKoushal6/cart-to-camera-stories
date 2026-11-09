@@ -726,6 +726,35 @@ def music_mix_args(duration, volume):
             f'[sp][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
             '-map', '0:v', '-map', '[a]']
 
+OUTRO_URL = os.getenv('OUTRO_URL', 'https://cart-to-camera-stories.lovable.app/cloud-clipper/outro.mp4')
+
+def outro_file():
+    # Branded outro appended to every reel; cached locally. OUTRO_URL='' disables it.
+    if not OUTRO_URL: return None
+    local = Path(__file__).resolve().parent / 'outro.mp4'
+    cached = ROOT / 'outro.mp4'
+    if local.exists() and local.stat().st_size > 0: return local
+    if cached.exists() and cached.stat().st_size > 0: return cached
+    try:
+        r = requests.get(OUTRO_URL, timeout=60, allow_redirects=False)
+        if r.status_code == 200 and r.content:
+            cached.write_bytes(r.content); return cached
+        log.warning('Outro download failed: HTTP %s', r.status_code)
+    except Exception:
+        log.exception('Outro download failed')
+    return None
+
+def append_outro(output, outro):
+    # Re-encode both parts to the same 1080x1920/30fps/48k stereo format so concat is seamless.
+    joined = output.with_name(output.stem + '-outro.mp4')
+    norm = 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30,setsar=1,format=yuv420p'
+    afmt = 'aformat=sample_rates=48000:channel_layouts=stereo'
+    run(['ffmpeg', '-y', '-i', str(output), '-i', str(outro), '-filter_complex',
+         f'[0:v]{norm}[v0];[1:v]{norm}[v1];[0:a]{afmt}[a0];[1:a]{afmt}[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]',
+         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-maxrate', '5500k', '-bufsize', '11000k',
+         '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', str(joined)], failure='FFmpeg could not append outro')
+    joined.replace(output)
+
 def render(job, targets, music=None):
     CURRENT.job = job
     try:
@@ -834,6 +863,13 @@ def _render(job, targets, music=None):
             # Final media check is last, AFTER all visual/audio edits, before uploading the unchanged result.
             inspection = inspect_output(output, ass, length, vibe if rendered else None, content_box)
             if music_warning: inspection['metrics']['warnings'].append(music_warning)
+            outro = outro_file()
+            if outro:
+                try: append_outro(output, outro)
+                except Exception:
+                    log.exception('Outro append failed for %s', t.id)
+                    inspection['metrics']['warnings'].append('Outro could not be appended; clip uploaded without it.')
+            if output.stat().st_size > 50*1024*1024: raise RuntimeError('Clip exceeds 50 MB')
             (d / f'{t.id}-quality.json').write_text(json.dumps(inspection))
             # URL supplied by Cutline grants PUT to this exact object only (expires in 2h).
             u = urlparse(str(t.upload_url))

@@ -6,3 +6,4 @@
 - Normalize overlapping repeated word cues into a single non-overlapping timeline before ASS rendering; libass must show only one caption group at a time without deleting sequential repeated speech.
 - Inspect the exact final MP4 after captions and music; store bounded frame samples behind token-protected completed-clip endpoints, and keep measured checks separate from sampled AI visual/audio limitations.
 - Default Cutline rendering fits the complete source into a centered letterbox band with separate title/caption safe zones; measure black scenes only inside that band so intentional padding cannot hide an empty video. Keep the optional OpenShorts reframe engine explicit.
+- Every default reel ends with the branded outro (outro.mp4 beside app.py, else OUTRO_URL, cached); outro failures keep the clip and add a warning. The outro is appended after the quality inspection so its frames don't skew measurements.

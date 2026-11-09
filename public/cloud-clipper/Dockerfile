@@ -5,7 +5,7 @@ RUN useradd -m -u 1000 user
 WORKDIR /home/user/app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY --chown=user:user app.py openshorts_adapter.py ./
+COPY --chown=user:user app.py openshorts_adapter.py outro.mp4 ./
 USER user
 ENV HOME=/home/user DATA_DIR=/tmp/cutline WHISPER_MODEL=base
 EXPOSE 7860
