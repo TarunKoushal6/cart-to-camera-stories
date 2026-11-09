@@ -67,7 +67,7 @@ export async function advanceCloudCut(data: {jobId:string}, context: {supabase:S
         const mode = musicModeSchema.catch("auto").parse(job.music);
         await callWorker(job.worker_url, token, `/jobs/${job.worker_job_id}/render`, { targets: uploads,
           music: { volume: MUSIC_VOLUME, clips: Object.fromEntries(uploads.map(u => [u.id, clipMusic(mode, u.segment.vibe)])) },
-          outro: wantsOutro((await context.supabase.auth.getUser()).data.user?.email) });
+          outro: wantsOutro((await supabaseAdmin.auth.admin.getUserById(context.userId)).data.user?.email) });
         // Status guards: a Stop pressed mid-tick must never be overwritten back to an active state.
         await supabaseAdmin.from("studio_cloud_jobs").update({ status: "rendering", error: null }).eq("id", job.id).in("status", ACTIVE);
         return { status: "rendering" };
