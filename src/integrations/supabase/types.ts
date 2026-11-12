@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      buffer_autopost: {
+        Row: {
+          channel_ids: string[]
+          enabled: boolean
+          last_result: string | null
+          last_slot_key: string | null
+          slots: string[]
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_ids?: string[]
+          enabled?: boolean
+          last_result?: string | null
+          last_slot_key?: string | null
+          slots?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_ids?: string[]
+          enabled?: boolean
+          last_result?: string | null
+          last_slot_key?: string | null
+          slots?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       instagram_accounts: {
         Row: {
           access_token: string
@@ -195,6 +228,8 @@ export type Database = {
       studio_clips: {
         Row: {
           approved_at: string | null
+          buffer_error: string | null
+          buffer_posted_at: string | null
           caption: string
           created_at: string
           end_seconds: number
@@ -211,6 +246,8 @@ export type Database = {
         }
         Insert: {
           approved_at?: string | null
+          buffer_error?: string | null
+          buffer_posted_at?: string | null
           caption?: string
           created_at?: string
           end_seconds: number
@@ -227,6 +264,8 @@ export type Database = {
         }
         Update: {
           approved_at?: string | null
+          buffer_error?: string | null
+          buffer_posted_at?: string | null
           caption?: string
           created_at?: string
           end_seconds?: number

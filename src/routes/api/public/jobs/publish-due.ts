@@ -35,6 +35,8 @@ export const Route = createFileRoute("/api/public/jobs/publish-due")({
           try { await advanceCloudCut({ jobId: job.id }, { supabase: supabaseAdmin, userId: job.user_id }); n++; }
           catch { /* Transient worker/network errors retry on the next protected schedule tick. */ }
         }
+        try { const { runDueAutoposts } = await import("@/lib/buffer.server"); n += await runDueAutoposts(supabaseAdmin); }
+        catch (e) { console.error("Buffer autopost tick failed", e); }
         return Response.json({ processed: n });
       },
     },
