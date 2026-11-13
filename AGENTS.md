@@ -42,4 +42,4 @@
 
 - The YouTube OAuth callback keeps the previously saved refresh_token when Google omits it on re-consent and shows only explicitly safe failure reasons (never codes/tokens), also posted to the opener — users see why connecting failed.
 - Studio Meta posts also advance via the publish-due schedule; the clip page polls only its own new posts through `getPublishStatus` (advances Meta/YouTube processing rows, owner-scoped via RLS) every 4s until published/scheduled/failed; immediate Meta failures throw the stored platform error — users see real outcomes, never a false "started".
-- Buffer auto-post: the 5-minute publish-due tick claims each daily slot once and shareNow-posts one random unposted reel with a long signed URL; Buffer fetches media at publish time, so never pre-queue expiring links.
+- Buffer auto-post posts one random unposted reel per claimed slot at slot time (shareNow); Buffer fetches media late, so never pre-queue expiring links.
