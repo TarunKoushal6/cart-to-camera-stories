@@ -69,8 +69,8 @@ export async function postRandomReel(admin: SupabaseClient<Database>, userId: st
     catch (e) { errors.push(`${ch.service}: ${e instanceof Error ? e.message : "failed"}`); }
   }
   const sent = channels.length - errors.length;
-  await admin.from("studio_clips").update({ buffer_posted_at: sent ? new Date().toISOString() : null, buffer_error: errors.join(" | ") || null,
-    approved_at: sent ? new Date().toISOString() : undefined }).eq("id", clip.id).eq("user_id", userId);
+  const stamp = new Date().toISOString();
+  await admin.from("studio_clips").update(sent ? { buffer_posted_at: stamp, buffer_error: errors.join(" | ") || null, approved_at: stamp } : { buffer_error: errors.join(" | ") || null }).eq("id", clip.id).eq("user_id", userId);
   return `"${clip.title}" → ${sent}/${channels.length} channels${errors.length ? ` · ${errors.join(" | ")}` : ""}`;
 }
 

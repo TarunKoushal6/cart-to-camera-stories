@@ -9,15 +9,15 @@ export function normalizeSlots(slots: string[]) {
 
 function localParts(now: Date, timeZone: string) {
   const f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  const p = Object.fromEntries(f.formatToParts(now).map(x => [x.type, x.value]));
-  return { date: `${p.year}-${p.month}-${p.day}`, minutes: Number(p.hour) * 60 + Number(p.minute) };
+  const p: Record<string, string> = Object.fromEntries(f.formatToParts(now).map(x => [x.type, x.value]));
+  return { date: `${p["year"]}-${p["month"]}-${p["day"]}`, minutes: Number(p["hour"]) * 60 + Number(p["minute"]) };
 }
 
 /** Returns a unique key ("YYYY-MM-DD HH:MM") for the slot due now, or null. A slot fires once, within 30 minutes after its time. */
 export function dueSlotKey(slots: string[], timeZone: string, now: Date, lastKey: string | null) {
   const { date, minutes } = localParts(now, timeZone);
   for (const s of normalizeSlots(slots).reverse()) {
-    const [h, m] = s.split(":").map(Number);
+    const [h = 0, m = 0] = s.split(":").map(Number);
     const diff = minutes - (h * 60 + m);
     if (diff >= 0 && diff < SLOT_WINDOW_MINUTES) {
       const key = `${date} ${s}`;
@@ -28,5 +28,5 @@ export function dueSlotKey(slots: string[], timeZone: string, now: Date, lastKey
 }
 
 export function pickRandom<T>(items: T[], rand: () => number = Math.random): T | null {
-  return items.length ? items[Math.floor(rand() * items.length) % items.length] : null;
+  return items.length ? (items[Math.floor(rand() * items.length) % items.length] ?? null) : null;
 }

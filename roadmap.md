@@ -45,4 +45,4 @@
 - [ ] Verify live Meta publishing and metrics — blocked on connected Instagram/Facebook accounts.
 - [x] Add AI language selection, custom scripts and actions-only review creation.
 - [x] Add external video uploads and editable posting details.
-- [x] Verify rules, authenticated custom creation/upload persistence and desktop/mobile rendering (11 tests passed). AI/video generation was not invoked; Instagram sending was not tested without a connected account. Uploaded MP4 fetched successfully; sandbox browser lacks H.264 playback support.
+- [x] Verify rules, authenticated custom creation/upload persistence and desktop/mobile rendering (11 tests passed). AI/video generation was not invoked; Instagram sending was not tested without a connected account. Uploaded MP4 fetched successfully; sandbox browser lacks H.264 playback support.- [ ] Buffer auto-post: verify a real post — waits on the user saving their Buffer key and picking channels on the dashboard.
