@@ -37,6 +37,7 @@ export function explainDefaultAiError(e: unknown): unknown {
  * it can't be decrypted, or the provider refused it (401/402/403/429) or is down (5xx). */
 export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredential) => Promise<T>): Promise<T> {
   const shared = sharedAiCredentials();
+  let ownError: unknown;
   if (saved?.model) {
     let own: AiCredential | null = null;
     try {
@@ -44,7 +45,10 @@ export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredent
       own = { provider: z.enum(providers).parse(saved.provider), model: saved.model, key: await decrypt(saved.encrypted_key, secret), baseUrl: saved.base_url, shared: false };
     } catch (e) { if (!shared.length) throw e; }
     if (own) {
-      try { return await run(own); } catch (e) { if (!shared.length || !savedKeyUnusable(e)) throw e; }
+      try { return await run(own); } catch (e) {
+        if (!shared.length || !savedKeyUnusable(e)) throw e;
+        ownError = e;
+      }
     }
   }
   if (!shared.length) throw new Error("Save your AI endpoint, key and model in Settings first.");
@@ -52,5 +56,7 @@ export async function withAi<T>(saved: Saved, secret: string, run: (c: AiCredent
   for (const c of shared) {
     try { return await run(c); } catch (e) { first ??= explainDefaultAiError(e); }
   }
+  // Show the user's own provider failure first; the built-in fallback was only a backup.
+  if (ownError instanceof AiRequestError) throw new AiRequestError(`Your AI (${saved?.model}) failed: ${ownError.message}`, ownError.status);
   throw first;
 }

@@ -2,10 +2,18 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { normalizeSlots } from "./buffer-rules";
+import { wantsBuffer } from "./cloud-clipper-rules";
+
+async function requireBufferAccess(userId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (!wantsBuffer(data.user?.email)) throw new Error("Buffer auto-post isn't available for this account.");
+}
 
 export const saveBufferKey = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ key: z.string().min(10).max(3000) }).parse(d))
   .handler(async ({ data, context }) => {
+    await requireBufferAccess(context.userId);
     const { listChannels } = await import("./buffer.server");
     const channels = await listChannels(data.key.trim());
     const secret = process.env["STUDIO_ENCRYPTION_KEY"];
@@ -20,6 +28,7 @@ export const saveBufferKey = createServerFn({ method: "POST" }).middleware([requ
 
 export const getBufferAutopost = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requireBufferAccess(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: cred } = await supabaseAdmin.from("studio_credentials").select("user_id").eq("user_id", context.userId).eq("kind", "buffer").maybeSingle();
     const { data: settings } = await context.supabase.from("buffer_autopost").select("*").eq("user_id", context.userId).maybeSingle();
@@ -38,6 +47,7 @@ export const getBufferAutopost = createServerFn({ method: "GET" }).middleware([r
 export const saveBufferAutopost = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(d => z.object({ enabled: z.boolean(), slots: z.array(z.string()).max(12), timezone: z.string().max(60), channelIds: z.array(z.string().max(100)).max(20) }).parse(d))
   .handler(async ({ data, context }) => {
+    await requireBufferAccess(context.userId);
     try { new Intl.DateTimeFormat("en", { timeZone: data.timezone }); } catch { throw new Error("Unknown time zone."); }
     const slots = normalizeSlots(data.slots);
     if (data.enabled && (!slots.length || !data.channelIds.length)) throw new Error("Add at least one time and one channel.");
@@ -49,6 +59,7 @@ export const saveBufferAutopost = createServerFn({ method: "POST" }).middleware(
 
 export const postRandomNow = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requireBufferAccess(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: settings } = await context.supabase.from("buffer_autopost").select("channel_ids").eq("user_id", context.userId).maybeSingle();
     const { postRandomReel } = await import("./buffer.server");

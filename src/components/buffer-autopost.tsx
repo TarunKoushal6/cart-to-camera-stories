@@ -7,8 +7,16 @@ import { getBufferAutopost, saveBufferAutopost, saveBufferKey, postRandomNow } f
 import { RECOMMENDED_SLOTS } from "@/lib/buffer-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { wantsBuffer } from "@/lib/cloud-clipper-rules";
 
 export function BufferAutopost() {
+  const [allowed, setAllowed] = useState(false);
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setAllowed(wantsBuffer(data.user?.email))); }, []);
+  return allowed ? <BufferAutopostCard /> : null;
+}
+
+function BufferAutopostCard() {
   const load = useServerFn(getBufferAutopost), save = useServerFn(saveBufferAutopost), saveKey = useServerFn(saveBufferKey), now = useServerFn(postRandomNow);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["buffer-autopost"], queryFn: () => load() });

@@ -77,7 +77,10 @@ export async function postRandomReel(admin: SupabaseClient<Database>, userId: st
 export async function runDueAutoposts(admin: SupabaseClient<Database>, now = new Date()) {
   const { data: rows } = await admin.from("buffer_autopost").select("*").eq("enabled", true).limit(200);
   let n = 0;
+  const { wantsBuffer } = await import("./cloud-clipper-rules");
   for (const row of rows || []) {
+    const { data: owner } = await admin.auth.admin.getUserById(row.user_id);
+    if (!wantsBuffer(owner.user?.email)) continue;
     const key = dueSlotKey(row.slots, row.timezone, now, row.last_slot_key);
     if (!key) continue;
     // Claim the slot first so overlapping ticks never double-post.
