@@ -1,6 +1,7 @@
-- [ ] Remove Buffer UI, sending code and saved credentials; stop old automatic schedules.
-- [ ] Add Tarun-only encrypted Zapier webhook, daily times, explicit auto-send consent and random saved-reel delivery.
-- [ ] Verify removal, schedule rules, owner access and signed-in dashboard; real Zap run waits on a webhook URL.
+- [x] Remove Buffer UI, sending code and saved credentials; database verified zero active Buffer schedules and zero Buffer keys.
+- [x] Add Tarun-only encrypted Zapier webhook, daily times, explicit auto-send consent and random saved-reel delivery with unique delivery claims.
+- [x] Verify 11 access/schedule/outro tests and signed-in Tarun dashboard; invalid webhook rejected, no mobile overflow or runtime errors, build OK.
+- [ ] Verify saved Zapier connection and real social post — requires Tarun's Catch Hook URL and configured posting actions in Zapier; no real Zap was triggered.
 - [x] Fixed excessive BGM attenuation with moderate ducking and per-clip failure warnings; framing unchanged. 10 worker and 50 app tests passed, including audible ducking and a real 60s music render.
 - [x] Signed-in MNbfiDXZBsg test completed: 26/26 MP4s saved, 24–57s; actual 57s H.264/AAC 1080×1920 download and full-frame/title/captions verified. Live quality metrics report music on all clips; some source transcript wording is inaccurate, no caption overlaps.
 - [ ] Activate and verify revised BGM balance on VPS — requires publishing and copying updated app.py into the user's container; live batch used previous mix settings.
