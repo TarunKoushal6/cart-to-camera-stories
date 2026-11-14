@@ -21,12 +21,6 @@ export function wantsOutro(email?: string | null) {
   return OUTRO_EMAILS.includes((email ?? "").trim().toLowerCase());
 }
 
-/** Only these accounts can use Buffer auto-post. */
-export const BUFFER_EMAILS = ["koushaltarun5@gmail.com"];
-export function wantsBuffer(email?: string | null) {
-  return BUFFER_EMAILS.includes((email ?? "").trim().toLowerCase());
-}
-
 /** Shared worker used by every account that hasn't saved its own. */
 export const DEFAULT_CLOUD_WORKER_URL = "https://86-107-77-170.sslip.io";
 

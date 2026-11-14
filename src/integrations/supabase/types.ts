@@ -602,6 +602,68 @@ export type Database = {
           },
         ]
       }
+      zapier_autopost: {
+        Row: {
+          enabled: boolean
+          last_result: string | null
+          last_slot_key: string | null
+          slots: string[]
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          last_result?: string | null
+          last_slot_key?: string | null
+          slots?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          last_result?: string | null
+          last_slot_key?: string | null
+          slots?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      zapier_deliveries: {
+        Row: {
+          clip_id: string
+          created_at: string
+          id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          clip_id: string
+          created_at?: string
+          id?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          clip_id?: string
+          created_at?: string
+          id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zapier_deliveries_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "studio_clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

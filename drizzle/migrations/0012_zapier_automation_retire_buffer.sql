@@ -1,0 +1,15 @@
+COMMENT ON TABLE public.buffer_autopost IS 'DEPRECATED: Buffer removed; no app or scheduler reads this table.';
+COMMENT ON COLUMN public.studio_clips.buffer_posted_at IS 'DEPRECATED: historical Buffer delivery only.';
+COMMENT ON COLUMN public.studio_clips.buffer_error IS 'DEPRECATED: historical Buffer error only.';
+ALTER TABLE public.studio_credentials DROP CONSTRAINT studio_credentials_kind_check;
+ALTER TABLE public.studio_credentials ADD CONSTRAINT studio_credentials_kind_check CHECK (kind IN ('ai','facebook','cloud_worker','buffer','zapier'));
+CREATE TABLE public.zapier_autopost (user_id uuid PRIMARY KEY, enabled boolean NOT NULL DEFAULT false, slots text[] NOT NULL DEFAULT ARRAY['12:00','17:00','20:30'], timezone text NOT NULL DEFAULT 'Asia/Kolkata', last_slot_key text, last_result text, updated_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.zapier_autopost TO authenticated;
+GRANT ALL ON public.zapier_autopost TO service_role;
+ALTER TABLE public.zapier_autopost ENABLE ROW LEVEL SECURITY;
+CREATE POLICY zapier_owner ON public.zapier_autopost FOR ALL TO authenticated USING (user_id = auth.uid() AND lower(auth.jwt()->>'email') = 'koushaltarun5@gmail.com') WITH CHECK (user_id = auth.uid() AND lower(auth.jwt()->>'email') = 'koushaltarun5@gmail.com');
+CREATE TABLE public.zapier_deliveries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, clip_id uuid NOT NULL REFERENCES public.studio_clips(id) ON DELETE CASCADE, status text NOT NULL DEFAULT 'sending' CHECK (status IN ('sending','accepted','failed','unknown')), created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(user_id,clip_id));
+GRANT SELECT ON public.zapier_deliveries TO authenticated;
+GRANT ALL ON public.zapier_deliveries TO service_role;
+ALTER TABLE public.zapier_deliveries ENABLE ROW LEVEL SECURITY;
+CREATE POLICY zapier_delivery_owner ON public.zapier_deliveries FOR SELECT TO authenticated USING (user_id = auth.uid() AND lower(auth.jwt()->>'email') = 'koushaltarun5@gmail.com');

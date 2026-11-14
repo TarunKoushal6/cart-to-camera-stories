@@ -8,7 +8,7 @@ import { studioHead, stamp } from "@/lib/studio-rules";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AutoCutCard } from "@/components/cloud-cut-button";
-import { BufferAutopost } from "@/components/buffer-autopost";
+import { ZapierAutopost } from "@/components/zapier-autopost";
 import { useServerFn } from "@tanstack/react-start";
 import { deleteStudioItems } from "@/lib/studio.functions";
 
@@ -58,7 +58,7 @@ function Dashboard() {
     </header>
 
     <div className="mt-8"><AutoCutCard /></div>
-    <BufferAutopost />
+    <ZapierAutopost />
 
     <div className="flex justify-between items-end mt-12">
       <h2 className="font-display text-2xl font-bold">Ready clips</h2>
