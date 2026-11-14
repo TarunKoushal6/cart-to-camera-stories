@@ -1,5 +1,5 @@
 - [x] Remove Buffer UI, sending code and saved credentials; database verified zero active Buffer schedules and zero Buffer keys.
-- [ ] Connect Firecrawl fresh in the new workspace; disregard old workspace connections.
+- [x] Connect Firecrawl fresh in the new workspace; existing app credential path verified with read-only HTTP 200, no old connection reused.
 - [x] Add Tarun-only encrypted Zapier webhook, daily times, explicit auto-send consent and random saved-reel delivery with unique delivery claims.
 - [x] Verify 11 access/schedule/outro tests and signed-in Tarun dashboard; invalid webhook rejected, no mobile overflow or runtime errors, build OK.
 - [ ] Verify saved Zapier connection and real social post — requires Tarun's Catch Hook URL and configured posting actions in Zapier; no real Zap was triggered.
