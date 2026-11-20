@@ -4,6 +4,7 @@ import traceback
 No database/service-role key or personal AI key is needed on this worker.
 """
 import os, json, uuid, secrets, shutil, subprocess, threading, re, time, logging, unicodedata
+from dataclasses import dataclass
 from collections import deque
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -101,6 +102,11 @@ def write(job, **fields):
 
 class StepError(RuntimeError):
     """Message is safe to show to the app owner (no URLs with tokens, keys or paths)."""
+
+@dataclass(frozen=True)
+class SubtitleResult:
+    cues: list | None
+    error: str | None = None
 
 class Stopped(StepError):
     """The owner pressed Stop in the app."""
@@ -276,6 +282,15 @@ def extractor_args(cookies=None):
     if cookies: return []
     return ['--extractor-args', DEFAULT_EXTRACTOR_ARGS]
 
+def subtitle_extractor_args(cookies=None):
+    """Use a caption-capable client separately from the video's multi-client download settings."""
+    subtitle_value = os.getenv('YOUTUBE_SUBTITLE_EXTRACTOR_ARGS', '').strip()
+    if subtitle_value.lower() in ('none', 'off', '0', 'false'): return []
+    if subtitle_value: return ['--extractor-args', subtitle_value]
+    if os.getenv('YOUTUBE_EXTRACTOR_ARGS', '').strip(): return extractor_args(cookies)
+    if cookies: return []  # desktop cookies are not compatible with Android player requests
+    return ['--extractor-args', 'youtube:player_client=android']
+
 def is_cookie_error(output):
     s = output.lower()
     return any(k in s for k in COOKIE_ERRORS)
@@ -398,20 +413,48 @@ def pick_subtitle(files):
     order = [l.strip() for l in SUB_LANGS.split(',') if l.strip()]
     def lang(f): return f.name[len('subs.'):].rsplit('.', 1)[0]
     def rank(f):
-        l = lang(f)
-        return (0 if l.endswith('-orig') else 1, order.index(l) if l in order else len(order))
+        l = lang(f).lower()
+        for index, requested in enumerate(order):
+            requested = requested.lower()
+            base = requested[:-5] if requested.endswith('-orig') else requested
+            if l == requested or l == base or l.startswith(base + '-'):
+                return (0 if requested.endswith('-orig') else 1, index)
+        return (2, len(order))
     return sorted(files, key=rank)[0] if files else None
 
+def explain_subtitle_failure(output, code):
+    text = output.lower()
+    if 'sign in to confirm' in text or 'not a bot' in text or 'captcha' in text:
+        return ('CAPTIONS_BLOCKED: YouTube blocked the worker while checking captions. The video may still have captions; '
+                'this is not proof they are missing. Check the worker login/cookies or try again later.')
+    if 'http error 429' in text or 'too many requests' in text:
+        return ('CAPTIONS_RATE_LIMITED: YouTube rate-limited the caption request (HTTP 429). '
+                'The video may still have captions; wait and retry.')
+    if 'http error 403' in text or 'forbidden' in text:
+        return ('CAPTIONS_DENIED: YouTube refused the caption request (HTTP 403). '
+                'The video may still have captions; check authorized access and retry later.')
+    if 'private video' in text or 'members-only' in text or 'join this channel' in text:
+        return 'CAPTIONS_UNAVAILABLE: This video is private or members-only, so the worker cannot check its captions.'
+    if 'confirm your age' in text or 'age-restricted' in text:
+        return 'CAPTIONS_UNAVAILABLE: This video is age-restricted; the worker needs authorized YouTube access.'
+    no_tracks = ('no subtitles for the requested languages', 'has no subtitles', 'no automatic captions',
+                 'there are no subtitles', 'no subtitles are available')
+    if code == 0 or any(marker in text for marker in no_tracks):
+        return ('NO_CAPTIONS: No Hindi/English YouTube caption track was found. This video was skipped '
+                'without downloading or running Whisper.')
+    return ('CAPTIONS_FETCH_FAILED: The worker could not verify YouTube captions. This does not prove the video '
+            'has no captions; check the worker console and retry.')
+
 def youtube_subtitles(job, url, d):
-    """Return word cues from existing YouTube captions, or None. Never fails the job."""
-    if os.getenv('YOUTUBE_SUBTITLES', '1').lower() in ('0', 'off', 'false', 'no'): return None
+    """Fetch original Hindi/English captions; keep access/rate-limit failures distinct from missing tracks."""
+    if os.getenv('YOUTUBE_SUBTITLES', '1').lower() in ('0', 'off', 'false', 'no'):
+        return SubtitleResult(None, 'CAPTIONS_DISABLED: YouTube caption lookup is disabled on this worker.')
     write(job, stage='fetching_subtitles', progress={})
     for f in d.glob('subs.*'):
         try: f.unlink()
         except OSError: pass
     def attempt(cookies):
-        # One language per call: a 429 on an auto-translated track would otherwise abort the whole
-        # request and push Hindi videos with real captions into slow CPU Whisper.
+        # Keep one language per call so a missing alternate track cannot hide an available Hindi track.
         out_all, code = '', 1
         for lang in [l.strip() for l in SUB_LANGS.split(',') if l.strip()]:
             check_stop(job)
@@ -420,8 +463,8 @@ def youtube_subtitles(job, url, d):
         return code, out_all
     def attempt_lang(cookies, lang):
         args = ['yt-dlp', '--no-playlist', '--skip-download', '--write-sub', '--write-auto-sub',
-                '--sleep-subtitles', '1', '--sub-lang', lang, '--sub-format', 'vtt/srt/best', *extractor_args(cookies), *cookies,
-                '-o', str(d / 'subs.%(ext)s'), url]
+                '--sleep-subtitles', '1', '--sub-lang', lang, '--sub-format', 'vtt/srt/best', *subtitle_extractor_args(cookies), *cookies,
+                '-o', str(d / 'subs.%(language)s.%(ext)s'), url]
         try:
             r = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180, text=True, errors='replace')
             return r.returncode, r.stdout
@@ -435,28 +478,39 @@ def youtube_subtitles(job, url, d):
         files = [f for f in d.glob('subs.*') if f.suffix in ('.vtt', '.srt')]
     best = pick_subtitle(files)
     if not best:
-        log.info('No YouTube subtitles found (%s); will transcribe audio', out.strip().splitlines()[-1][:200] if out.strip() else code)
-        return None
+        issue = explain_subtitle_failure(out, code)
+        log.warning('%s', issue.split(':', 1)[0])
+        return SubtitleResult(None, issue)
     try:
         cues = parse_subtitles(best.read_text(encoding='utf-8', errors='replace'))
     except Exception:
-        log.exception('Could not parse subtitles %s', best.name); return None
+        log.exception('Could not parse subtitles %s', best.name)
+        return SubtitleResult(None, 'CAPTIONS_INVALID: YouTube returned a caption file the worker could not read.')
     if len(cues) < 20:
-        log.info('Subtitles %s too short (%d words); will transcribe audio', best.name, len(cues)); return None
+        log.info('Subtitles %s too short (%d words)', best.name, len(cues))
+        return SubtitleResult(None, 'CAPTIONS_TOO_SHORT: The caption track was empty or too short to process; video skipped.')
     log.info('Using YouTube subtitles %s (%d words) - skipping transcription', best.name, len(cues))
-    return cues
+    return SubtitleResult(cues)
 
 def download(job, url):
     CURRENT.job = job
     try:
         check_stop(job)
         d = folder(job)
-        sub_cues = youtube_subtitles(job, url, d) if ENGINE == 'cutline' else None
+        subtitle_attempts = []
+        subtitle_result = youtube_subtitles(job, url, d) if ENGINE == 'cutline' else None
+        sub_cues = subtitle_result.cues if subtitle_result else None
+        if subtitle_result and subtitle_result.error: subtitle_attempts.append(subtitle_result.error)
         if sub_cues is None and ENGINE == 'cutline' and os.getenv('ALLOW_WHISPER', '0') != '1':
             time.sleep(5)  # one retry: YouTube often rate-limits the first subtitle request
-            sub_cues = youtube_subtitles(job, url, d)
+            subtitle_result = youtube_subtitles(job, url, d)
+            sub_cues = subtitle_result.cues
+            if subtitle_result.error: subtitle_attempts.append(subtitle_result.error)
             if sub_cues is None:
-                raise StepError('NO_CAPTIONS: This video has no YouTube captions, so it was skipped (no download, no slow transcription). Try a video that has captions (CC).')
+                # A rate limit, bot challenge, or denied request must never be mislabeled as missing CC.
+                subtitle_error = next((error for error in subtitle_attempts if not error.startswith('NO_CAPTIONS:')),
+                                      subtitle_attempts[-1] if subtitle_attempts else 'CAPTIONS_FETCH_FAILED: The worker could not verify YouTube captions.')
+                raise StepError(subtitle_error)
         write(job, stage='downloading', progress={})
         if ENGINE == 'openshorts':
             from openshorts_adapter import download_source

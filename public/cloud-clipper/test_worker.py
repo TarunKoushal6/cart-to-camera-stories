@@ -167,6 +167,45 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(openshorts_adapter.transcribe_source(Path('/tmp/source.mp4')),[{'start':0.0,'end':1.0,'text':'Hello'}])
 
 
+class SubtitleTests(unittest.TestCase):
+    def test_subtitle_client_defaults_to_android_without_changing_video_clients(self):
+        with patch.dict(os.environ, {'YOUTUBE_EXTRACTOR_ARGS': '', 'YOUTUBE_SUBTITLE_EXTRACTOR_ARGS': ''}, clear=False):
+            self.assertEqual(app.subtitle_extractor_args([]), ['--extractor-args', 'youtube:player_client=android'])
+        with patch.dict(os.environ, {'YOUTUBE_SUBTITLE_EXTRACTOR_ARGS': 'youtube:player_client=ios'}, clear=False):
+            self.assertEqual(app.subtitle_extractor_args([]), ['--extractor-args', 'youtube:player_client=ios'])
+
+    def test_hindi_regional_track_is_preferred_over_english(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hindi = Path(tmp) / 'subs.hi-Hans.vtt'
+            english = Path(tmp) / 'subs.en.vtt'
+            hindi.touch(); english.touch()
+            self.assertEqual(app.pick_subtitle([english, hindi]), hindi)
+
+    def test_caption_lookup_uses_android_and_reads_auto_hindi_captions(self):
+        job = uuid.uuid4()
+        directory = app.folder(job)
+        directory.mkdir()
+        words = 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'
+        vtt = f'WEBVTT\n\n00:00:00.000 --> 00:00:20.000\n{words}\n'
+
+        def fetch(args, **kwargs):
+            self.assertIn('youtube:player_client=android', args)
+            output = Path(args[args.index('-o') + 1].replace('%(language)s', 'hi').replace('%(ext)s', 'vtt'))
+            output.write_text(vtt, encoding='utf-8')
+            return types.SimpleNamespace(returncode=0, stdout='Writing auto captions')
+
+        with patch.dict(os.environ, {'YOUTUBE_EXTRACTOR_ARGS': '', 'YOUTUBE_SUBTITLE_EXTRACTOR_ARGS': '', 'YOUTUBE_SUBTITLES': '1'}, clear=False), \
+             patch.object(app, 'cookie_args', return_value=[]), patch.object(app.subprocess, 'run', side_effect=fetch):
+            result = app.youtube_subtitles(job, 'https://www.youtube.com/watch?v=test', directory)
+        self.assertIsNone(result.error)
+        self.assertEqual(len(result.cues or []), 20)
+
+    def test_rate_limit_is_not_reported_as_missing_captions(self):
+        error = app.explain_subtitle_failure('ERROR: HTTP Error 429: Too Many Requests', 1)
+        self.assertTrue(error.startswith('CAPTIONS_RATE_LIMITED:'))
+        self.assertIn('may still have captions', error)
+        self.assertTrue(app.explain_subtitle_failure('There are no subtitles for the requested languages', 1).startswith('NO_CAPTIONS:'))
+
 class OutroTest(unittest.TestCase):
     def test_outro_is_appended_to_reel_end(self):
         with tempfile.TemporaryDirectory() as tmp:
