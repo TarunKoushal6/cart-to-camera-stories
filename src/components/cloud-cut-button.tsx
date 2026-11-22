@@ -36,7 +36,7 @@ function useCloudCut(sourceId?: string) {
   useEffect(() => {
     if (job?.status === "failed" && job.error?.includes("NO_CAPTIONS") && shownSkip.current !== job.id) {
       shownSkip.current = job.id;
-      toast.error("Video skipped — no captions", { description: "This YouTube video has no captions (CC), so it was not downloaded or processed. Try another video that has captions.", duration: 15000 });
+      toast.error("No Hindi/English captions were retrieved", { description: "This does not confirm that captions are absent. If CC is visible on YouTube, check the worker error below; it may be blocked or outdated.", duration: 15000 });
     }
   }, [job?.id, job?.status]);
   const { data: live } = useQuery({ queryKey: ["cloud-progress", job?.id, job?.status], refetchInterval: 3000,

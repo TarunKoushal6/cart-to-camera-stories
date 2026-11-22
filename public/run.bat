@@ -19,11 +19,11 @@ set "PORT=8000"
 
 REM Speed settings (already-set environment values win).
 REM YOUTUBE_SUBTITLES=1 : use YouTube's own/auto captions when available, skip transcription
-REM YOUTUBE_SUB_LANGS   : caption languages to try (original-language "-orig" tracks preferred)
+REM YOUTUBE_SUB_LANGS   : Hindi first, then English; original-language tracks preferred
 REM WHISPER_THREADS     : CPU threads for fallback transcription (default: every core)
 REM WHISPER_BEAM_SIZE=1 : greedy decoding, roughly 4x faster on CPU
 if not defined YOUTUBE_SUBTITLES set "YOUTUBE_SUBTITLES=1"
-if not defined YOUTUBE_SUB_LANGS set "YOUTUBE_SUB_LANGS=en,hi,en-orig,hi-orig"
+if not defined YOUTUBE_SUB_LANGS set "YOUTUBE_SUB_LANGS=hi-orig,en-orig,hi,en"
 if not defined WHISPER_THREADS set "WHISPER_THREADS=%NUMBER_OF_PROCESSORS%"
 if not defined WHISPER_THREADS set "WHISPER_THREADS=8"
 if not defined WHISPER_BEAM_SIZE set "WHISPER_BEAM_SIZE=1"

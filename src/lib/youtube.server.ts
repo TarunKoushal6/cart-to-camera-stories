@@ -11,14 +11,18 @@ export async function fetchYouTube(id: string) {
     const player = await r.json() as { videoDetails?: { lengthSeconds?: string }; captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: { baseUrl: string; languageCode: string }[] } } };
     duration = Number(player.videoDetails?.lengthSeconds) || null;
     const tracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-    const track = tracks.find(t => t.languageCode === "en") ?? tracks[0];
-    if (track) {
-      const trackUrl = new URL(track.baseUrl);
-      if (!trackUrl.hostname.endsWith("youtube.com") && !trackUrl.hostname.endsWith("googlevideo.com")) throw new Error("Invalid caption host");
-      trackUrl.searchParams.set("fmt", "json3");
-      const text = await fetch(trackUrl, { signal: AbortSignal.timeout(15000) });
-      const captions = await text.json() as { events?: { tStartMs: number; dDurationMs?: number; segs?: { utf8: string }[] }[] };
-      transcript = (captions.events || []).filter(e => e.segs && e.dDurationMs).map(e => ({ start: e.tStartMs/1000, end: (e.tStartMs+(e.dDurationMs || 0))/1000, text: (e.segs || []).map(s => s.utf8).join("").trim() })).filter(c => c.text.length > 0);
+    const languageRank = (code: string) => /^hi(?:-|$)/i.test(code) ? 0 : /^en(?:-|$)/i.test(code) ? 1 : 2;
+    for (const track of [...tracks].sort((a, b) => languageRank(a.languageCode) - languageRank(b.languageCode))) {
+      try {
+        const trackUrl = new URL(track.baseUrl);
+        if (!trackUrl.hostname.endsWith("youtube.com") && !trackUrl.hostname.endsWith("googlevideo.com")) continue;
+        trackUrl.searchParams.set("fmt", "json3");
+        const text = await fetch(trackUrl, { signal: AbortSignal.timeout(15000) });
+        if (!text.ok) continue;
+        const captions = await text.json() as { events?: { tStartMs: number; dDurationMs?: number; segs?: { utf8: string }[] }[] };
+        const cues = (captions.events || []).filter(e => e.segs && e.dDurationMs).map(e => ({ start: e.tStartMs/1000, end: (e.tStartMs+(e.dDurationMs || 0))/1000, text: (e.segs || []).map(s => s.utf8).join("").trim() })).filter(c => c.text.length > 0);
+        if (cues.length) { transcript = cues; break; }
+      } catch { /* A failed track should not hide another available language. */ }
     }
   } catch { /* Free captions are not always accessible; retain usable metadata. */ }
   return { title: metadata.title, author: metadata.author_name, thumbnail_url: metadata.thumbnail_url, duration, transcript, transcript_status: transcript.length ? "available" : "unavailable" };
